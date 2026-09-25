@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "foamy.monitor",
+  "name": "Foamy Monitor",
+  "version": "1.0.0",
+  "author": "foamrider",
+  "description": "Display arrangement, safe configuration trials, and wireless casting",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Displays",
+    "description": "Display controls and wireless casting",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "language": "system"
+    },
+    "schema": [
+      {
+        "key": "language",
+        "type": "enum",
+        "label": "Language",
+        "defaultValue": "system",
+        "options": [
+          "system",
+          "en",
+          "nb"
+        ]
+      }
+    ]
+  },
+  "license": "MIT",
+  "omarchy": {
+    "clonedFrom": "omarchy.monitor"
+  }
+}
