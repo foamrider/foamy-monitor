@@ -10,6 +10,29 @@ FIELDS = ("output", "mode", "position", "scale", "transform", "disabled", "mirro
 TOKEN = re.compile(r'--\[(=*)\[.*?\]\1\]|--[^\n]*|\[(=*)\[.*?\]\2\]|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[A-Za-z_][\w]*|\s+|.', re.S)
 
 
+def gtk_scale_local(source: str, tokens: list[tuple[str, int, int]], reference: int) -> tuple[int, tuple[int, int]]:
+    name = tokens[reference][0]
+    uses = [i for i, token in enumerate(tokens) if token[0] == name]
+    error = "GTK scale must use a standalone local whole number without reassignments or other uses in monitors.lua"
+    # Only resolve a single-purpose local constant; never evaluate arbitrary Lua.
+    if len(uses) != 2 or uses[1] != reference or any(t[0] in ("do", "end") for t in tokens):
+        raise ValueError(error)
+    declaration = uses[0]
+    if declaration == 0 or tokens[declaration - 1][0] != "local":
+        raise ValueError(error)
+    start = source.rfind("\n", 0, tokens[declaration - 1][1]) + 1
+    end = source.find("\n", start)
+    end = len(source) if end == -1 else end
+    match = re.fullmatch(r'\s*local\s+' + re.escape(name) + r'\s*=\s*([1-9][0-9]*)\s*;?\s*(?:--[^\n]*)?', source[start:end])
+    if not match:
+        raise ValueError(error)
+    span = (start + match.start(1), start + match.end(1))
+    following = next((t[0] for t in tokens if t[1] >= span[1]), None)
+    if following in ("+", "-", "*", "/", "%", "^", ".", "&", "|", "~", "<", ">", "=", "and", "or"):
+        raise ValueError(error)
+    return int(match[1]), span
+
+
 def gtk_scale_setting(source: str) -> tuple[int, tuple[int, int] | None]:
     tokens = [(m.group(), m.start(), m.end()) for m in TOKEN.finditer(source)
               if not m.group().isspace() and not m.group().startswith("--")]
@@ -20,10 +43,15 @@ def gtk_scale_setting(source: str) -> tuple[int, tuple[int, int] | None]:
         prefix = source[source.rfind("\n", 0, tokens[i][1]) + 1:tokens[i][1]]
         if prefix.strip() or any(t[0] in ("if", "for", "while", "repeat", "function") for t in tokens):
             raise ValueError("GTK scale must be a standalone hl.env call in monitors.lua")
-        call = tokens[i:i + 8]
-        if len(call) != 8 or call[5][0] != "," or call[7][0] != ")" or not re.fullmatch(r'"[1-9][0-9]*"|\'[1-9][0-9]*\'', call[6][0]):
-            raise ValueError("GTK scale must be a whole-number string in monitors.lua")
-        found.append((int(call[6][0][1:-1]), (call[6][1], call[6][2])))
+        call = tokens[i:i + 11]
+        if len(call) >= 8 and call[5][0] == "," and call[7][0] == ")" and re.fullmatch(r'"[1-9][0-9]*"|\'[1-9][0-9]*\'', call[6][0]):
+            found.append((int(call[6][0][1:-1]), (call[6][1], call[6][2])))
+        elif len(call) == 11 and [t[0] for t in call[5:8]] == [",", "tostring", "("] and [t[0] for t in call[9:]] == [")", ")"] and re.fullmatch(r'[A-Za-z_]\w*', call[8][0]):
+            if sum(t[0] == "tostring" for t in tokens) != 1:
+                raise ValueError("GTK scale requires the unmodified tostring function in monitors.lua")
+            found.append(gtk_scale_local(source, tokens, i + 8))
+        else:
+            raise ValueError("GTK scale must be a whole-number string or tostring of a local whole number in monitors.lua")
     if len(found) > 1:
         raise ValueError("Remove duplicate GDK_SCALE settings from monitors.lua")
     return found[0] if found else (1, None)
@@ -34,7 +62,9 @@ def update_gtk_scale(source: str, scale: int) -> str:
         raise ValueError("GTK scale must be 1, 2, 3, or 4")
     _, span = gtk_scale_setting(source)
     if span:
-        return source[:span[0]] + lua_string(str(scale)) + source[span[1]:]
+        # Preserve Omarchy's numeric local declaration and its tostring call.
+        value = lua_string(str(scale)) if source[span[0]] in ('"', "'") else str(scale)
+        return source[:span[0]] + value + source[span[1]:]
     return source.rstrip() + '\nhl.env("GDK_SCALE", ' + lua_string(str(scale)) + ')\n'
 
 

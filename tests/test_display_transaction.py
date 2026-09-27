@@ -19,6 +19,15 @@ import display_transaction as backend
 from display_config import gtk_scale_setting, update_config, update_gtk_scale
 
 
+OMARCHY_CONFIG = '''-- Omarchy's default monitor configuration.
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = "auto"
+
+hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
+'''
+
+
 def monitor(name="DP-1", disabled=False):
     return dict(name=name, id="desc:Test " + name, selector="desc:Test " + name,
                 description="Test " + name, make="Test", model=name, serial=name,
@@ -28,6 +37,35 @@ def monitor(name="DP-1", disabled=False):
 
 
 class DisplayModelTests(unittest.TestCase):
+    def test_gtk_scale_updates_omarchy_local_without_rewriting_calls(self):
+        for source in [OMARCHY_CONFIG,
+                       OMARCHY_CONFIG.replace('= 2', '= 12; -- keep this'),
+                       OMARCHY_CONFIG.replace('"GDK_SCALE"', "'GDK_SCALE'"),
+                       '-- local omarchy_gdk_scale = 9\n' + OMARCHY_CONFIG]:
+            with self.subTest(source=source):
+                expected = 12 if '= 12;' in source else 2
+                self.assertEqual(gtk_scale_setting(source)[0], expected)
+                changed = update_gtk_scale(source, 1)
+                self.assertEqual(changed, source.replace(f'local omarchy_gdk_scale = {expected}', 'local omarchy_gdk_scale = 1'))
+                self.assertEqual(gtk_scale_setting(changed)[0], 1)
+                self.assertEqual(update_gtk_scale(changed, 1), changed)
+
+    def test_gtk_scale_rejects_dynamic_or_shared_locals(self):
+        for source in [OMARCHY_CONFIG.replace('= 2', '= 1 + 1'),
+                       OMARCHY_CONFIG.replace('= 2', '= 2\n + 1'),
+                       OMARCHY_CONFIG.replace('= 2', '= 2.5'),
+                       OMARCHY_CONFIG.replace('= 2', '= compute_scale()'),
+                       OMARCHY_CONFIG.replace('local omarchy_gdk_scale = 2\n', ''),
+                       OMARCHY_CONFIG.replace('local omarchy_gdk_scale', 'omarchy_gdk_scale'),
+                       OMARCHY_CONFIG + 'omarchy_gdk_scale = 3\n',
+                       OMARCHY_CONFIG + 'local omarchy_gdk_scale = 3\n',
+                       OMARCHY_CONFIG + 'print(omarchy_gdk_scale)\n',
+                       'do\n' + OMARCHY_CONFIG + 'end\n',
+                       'local tostring = custom\n' + OMARCHY_CONFIG,
+                       OMARCHY_CONFIG + 'hl.env("GDK_SCALE", "1")\n']:
+            with self.subTest(source=source), self.assertRaises(ValueError):
+                update_gtk_scale(source, 1)
+
     def test_gtk_scale_cannot_interrupt_a_display_trial(self):
         with tempfile.TemporaryDirectory() as directory:
             store = backend.Store(Path(directory))
@@ -155,6 +193,8 @@ elif args[0] in ('eval','reload'):
     env_path=Path(os.environ['TEST_GTK_ENV'])
     environment=json.loads(env_path.read_text())
     gtk=re.search(r'hl\.env\("GDK_SCALE",\s*"(\d+)"\)',source)
+    if not gtk and 'hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))' in source:
+        gtk=re.search(r'local omarchy_gdk_scale = (\d+)',source)
     if gtk:
         environment['compositor']=gtk[1]
         env_path.write_text(json.dumps(environment))
@@ -331,6 +371,29 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(self.config.read_text(), self.original)
         self.assertEqual(json.loads(self.gtk_environment.read_text()), dict(compositor="1", systemd="1", dbus="1"))
         self.assertEqual(result["gtkScale"]["value"], 1)
+
+    def test_omarchy_default_gtk_scale_status_discard_revert_and_keep(self):
+        self.config.write_text(OMARCHY_CONFIG)
+        self.gtk_environment.write_text(json.dumps(dict(compositor="2", systemd="2", dbus="2")))
+        displays = self.displays.read_text()
+        self.assertEqual(self.call("status")["gtkScale"], {"base": 2, "value": 2, "error": ""})
+        self.assertTrue(self.call("gtk-scale", {"value": 1})["ok"])
+        self.assertEqual(self.call("discard")["gtkScale"], {"base": 2, "value": 2, "error": ""})
+        for decision in ("revert", "keep"):
+            self.assertTrue(self.call("gtk-scale", {"value": 1})["ok"])
+            self.assertEqual(self.config.read_text(), OMARCHY_CONFIG)
+            self.assertTrue(self.call("apply")["ok"])
+            state = self.wait_phase("testing")["state"]
+            self.assertEqual(json.loads(self.gtk_environment.read_text()), dict(compositor="1", systemd="1", dbus="1"))
+            self.assertEqual(self.config.read_text(), OMARCHY_CONFIG)
+            self.assertTrue(self.call(decision, {"token": state["token"]})["ok"])
+            result = self.wait_phase("idle")
+            self.assertEqual(result["state"]["error"], "")
+            expected = 1 if decision == "keep" else 2
+            self.assertEqual(result["gtkScale"], {"base": expected, "value": expected, "error": ""})
+            self.assertEqual(self.config.read_text(), OMARCHY_CONFIG.replace('= 2', f'= {expected}'))
+            self.assertEqual(self.displays.read_text(), displays)
+            self.assertEqual(json.loads(self.gtk_environment.read_text()), dict.fromkeys(("compositor", "systemd", "dbus"), str(expected)))
 
     def test_external_config_edit_is_preserved_and_trial_rolls_back(self):
         self.start()
