@@ -786,7 +786,7 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.activelyCasting ? "󰍺" : "󰍹"
+    text: (root.activelyCasting || Quickshell.screens.length > 1) ? "󰍺" : "󰍹"
     onPressed: root.toggle()
     onWheelMoved: function (delta) {
       var wheel = Util.wheelSteps(root.wheelAccumulator, delta)
