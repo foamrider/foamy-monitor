@@ -1313,10 +1313,9 @@ Panel {
           }
         }
       }
-      Rectangle {
+      Item {
         id: footer
-        bottomLeftRadius: Math.max(0, panel.cornerRadius - Border.top(panel.borderSpec))
-        bottomRightRadius: Math.max(0, panel.cornerRadius - Border.top(panel.borderSpec))
+        clip: true
         anchors {
           left: parent.left
           right: parent.right
@@ -1324,7 +1323,15 @@ Panel {
         }
         height: root.editingSettings && !root.busy ? 0 : footerContent.implicitHeight + Style.space(28)
         visible: height > 0
-        color: root.busy ? Qt.tint(Color.popups.background, Qt.alpha(root.foreground, 0.05)) : Color.popups.background
+        // Preserve the popup curve even when this footer is shorter than its diameter.
+        Rectangle {
+          anchors.bottom: parent.bottom
+          width: parent.width
+          height: Math.max(parent.height, bottomLeftRadius * 2)
+          bottomLeftRadius: Math.max(0, panel.cornerRadius - Border.bottom(panel.borderSpec))
+          bottomRightRadius: bottomLeftRadius
+          color: root.busy ? Qt.tint(Color.popups.background, Qt.alpha(root.foreground, 0.05)) : Color.popups.background
+        }
         Rectangle {
           width: parent.width
           height: 1
