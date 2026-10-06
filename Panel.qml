@@ -813,7 +813,7 @@ Panel {
       id: keyboard
       objectName: "monitorPanelContent"
       color: Color.popups.background
-      radius: Style.space(13)
+      radius: Math.max(0, panel.cornerRadius - Border.top(panel.borderSpec))
       anchors.fill: parent
       focus: true
       Keys.onPressed: function (event) {
@@ -902,8 +902,8 @@ Panel {
           Rectangle {
             width: parent.width
             height: headerContent.implicitHeight + Style.space(40)
-            topLeftRadius: Style.space(13)
-            topRightRadius: Style.space(13)
+            topLeftRadius: Math.max(0, panel.cornerRadius - Border.top(panel.borderSpec))
+            topRightRadius: Math.max(0, panel.cornerRadius - Border.top(panel.borderSpec))
             gradient: Gradient {
               orientation: Gradient.Horizontal
               GradientStop {
@@ -941,7 +941,7 @@ Panel {
                   id: settingsButton
                   implicitWidth: Style.space(32)
                   implicitHeight: Style.space(32)
-                  radius: Style.space(7)
+                  radius: Style.cornerRadius * 2
                   iconSize: Style.space(16)
                   tooltipText: root.tr("Plugin settings")
                   foreground: root.secondary
@@ -1030,7 +1030,7 @@ Panel {
               Rectangle {
                 width: parent.width
                 height: layoutContent.implicitHeight + Style.space(28)
-                radius: Style.space(8)
+                radius: Style.cornerRadius * 2
                 color: Qt.tint(Color.popups.background, Qt.alpha(root.foreground, 0.045))
                 Column {
                   id: layoutContent
@@ -1315,8 +1315,8 @@ Panel {
       }
       Rectangle {
         id: footer
-        bottomLeftRadius: Style.space(13)
-        bottomRightRadius: Style.space(13)
+        bottomLeftRadius: Math.max(0, panel.cornerRadius - Border.top(panel.borderSpec))
+        bottomRightRadius: Math.max(0, panel.cornerRadius - Border.top(panel.borderSpec))
         anchors {
           left: parent.left
           right: parent.right
@@ -1415,7 +1415,7 @@ Panel {
         color: Color.popups.background
         border.color: Color.accent
         border.width: Style.normalBorderWidth
-        radius: Style.cornerRadius
+        radius: Style.cornerRadius * 2
         Label {
           anchors.centerIn: parent
           text: root.friendlyDisplayName(root.liveMonitors.find(function (m) {
@@ -1434,7 +1434,7 @@ Panel {
     fontFamily: root.panelFontFamily
     fontSize: Style.space(12)
     foreground: root.foreground
-    radius: Style.space(7)
+    radius: Style.cornerRadius * 2
     borderSpec: Border.flat(activeFocus ? root.foreground : root.divider, 1)
     color: hot || activeFocus ? Qt.alpha(root.foreground, 0.1) : Qt.alpha(root.foreground, 0.035)
     opacity: enabled ? 1 : 0.4
@@ -1655,7 +1655,7 @@ Panel {
     y: baseY + dragDeltaY
     width: Math.max(2, info.w * canvas.pxPerUnit - 2)
     height: Math.max(2, info.h * canvas.pxPerUnit - 2)
-    radius: Style.space(6)
+    radius: Style.cornerRadius * 2
     color: info.focused ? Qt.tint(Color.popups.background, Qt.alpha(root.foreground, 0.18)) : Color.popups.background
     border.width: dragArea.dragging ? 2 : 1
     border.color: dragArea.dragging || activeFocus || info.focused ? root.foreground : root.divider
