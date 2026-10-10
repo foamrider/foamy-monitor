@@ -13,6 +13,33 @@ import "Model.js" as Model
 
 Panel {
   id: root
+  readonly property SettingsPane settingsPane: settingsLoader.item
+  function open() { preparePopup(); controller.show() }
+
+  // Keep the window and shaders warm; release the heavier sections after the fade.
+  property bool popupContentActive: false
+  property bool settingsContentActive: false
+  function preparePopup() { popupUnload.stop(); popupContentActive = true }
+  Connections {
+    target: root
+    function onEditingSettingsChanged() {
+      if (root.editingSettings) root.settingsContentActive = true
+    }
+    function onOpenedChanged() {
+      if (root.opened) root.preparePopup()
+      else popupUnload.restart()
+    }
+  }
+  Timer {
+    id: popupUnload
+    interval: 1000
+    onTriggered: {
+      if (!root.opened && !panel.visible) {
+        root.popupContentActive = false
+        root.settingsContentActive = false
+      }
+    }
+  }
   moduleName: "foamy.monitor"
   ipcTarget: "foamy.monitor"
   manageIpc: false
@@ -35,7 +62,7 @@ Panel {
     open()
     panelScroll.contentY = 0
     Qt.callLater(function () {
-      settingsPane.focusBack()
+      if (root.opened && settingsPane) settingsPane.focusBack()
     })
   }
   function closeSettings() {
@@ -805,9 +832,9 @@ Panel {
     padding: 0
     borderSpec: Border.flat(Qt.alpha(Color.popups.text, 0.15), 1)
     // Keep the settings action neutral on open; Tab still gives it a visible focus ring.
-    focusTarget: root.testing ? revertButton : root.editingSettings ? settingsPane.backTarget : keyboard
+    focusTarget: root.testing ? revertButton : root.editingSettings ? (settingsPane ? settingsPane.backTarget : null) : keyboard
     contentWidth: panel.fittedContentWidth(Style.space(560))
-    contentHeight: panel.fittedContentHeight((root.editingSettings ? settingsPane.implicitHeight : panelColumn.implicitHeight) + footer.height, Style.space(900))
+    contentHeight: panel.fittedContentHeight((root.editingSettings ? (settingsPane ? settingsPane.implicitHeight : 0) : panelColumn.implicitHeight) + footer.height, Style.space(900))
 
     Rectangle {
       id: keyboard
@@ -854,7 +881,7 @@ Panel {
         }
         clip: true
         contentWidth: width
-        contentHeight: root.editingSettings ? settingsPane.implicitHeight : panelColumn.implicitHeight
+        contentHeight: root.editingSettings ? (settingsPane ? settingsPane.implicitHeight : 0) : panelColumn.implicitHeight
         boundsBehavior: Flickable.StopAtBounds
         flickableDirection: Flickable.VerticalFlick
         onContentHeightChanged: contentY = Math.max(0, Math.min(contentY, contentHeight - height))
@@ -881,19 +908,32 @@ Panel {
               panelScroll.contentY = Math.max(0, Math.min(panelScroll.contentHeight - panelScroll.height, point.y + item.height - panelScroll.height + Style.space(8)))
           }
         }
-        SettingsPane {
-          id: settingsPane
+        Loader {
+          id: settingsLoader
+
+          width: parent.width
+          active: root.settingsContentActive
           visible: root.editingSettings
-          width: panelScroll.width
-          settings: root.settings
-          language: root.language
-          saving: preferencesSave.running
-          error: root.settingsError
-          pendingDisplayChanges: root.changeCount > 0
-          onBack: root.closeSettings()
-          onSave: function (key, value) {
-            root.savePreference(key, value)
+
+          sourceComponent: Component {
+            SettingsPane {
+              id: settingsPane
+
+              visible: root.editingSettings
+              width: panelScroll.width
+              settings: root.settings
+              language: root.language
+              saving: preferencesSave.running
+              error: root.settingsError
+              pendingDisplayChanges: root.changeCount > 0
+              onBack: root.closeSettings()
+              onSave: function(key, value) {
+                root.savePreference(key, value);
+              }
+            }
+
           }
+
         }
         Column {
           id: panelColumn
@@ -1065,9 +1105,9 @@ Panel {
               }
               // Disabled or disconnected drafts must remain selectable outside the diagram.
               Repeater {
-                model: root.transaction.draft.filter(function (m) {
+                model: root.popupContentActive ? root.transaction.draft.filter(function (m) {
                   return m.disabled || !m.connected || !!m.mirrorOf
-                })
+                }) : []
                 MonitorAction {
                   required property var modelData
                   width: parent.width
