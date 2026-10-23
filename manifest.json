@@ -17,22 +17,8 @@
     "category": "System",
     "allowMultiple": false,
     "defaultSection": "right",
-    "defaults": {
-      "language": "system"
-    },
-    "schema": [
-      {
-        "key": "language",
-        "type": "enum",
-        "label": "Language",
-        "defaultValue": "system",
-        "options": [
-          "system",
-          "en",
-          "nb"
-        ]
-      }
-    ]
+    "defaults": {},
+    "schema": []
   },
   "license": "MIT",
   "omarchy": {

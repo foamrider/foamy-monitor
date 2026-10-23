@@ -7,7 +7,6 @@ import Quickshell.Io
 import Quickshell.Wayland
 import qs.Ui
 import qs.Ui as Ui
-import "Preferences.js" as Preferences
 import qs.Commons
 import "Model.js" as Model
 
@@ -50,12 +49,10 @@ Panel {
   readonly property color secondary: Qt.tint(Color.popups.background, Qt.alpha(foreground, 0.7))
   readonly property color divider: Qt.alpha(foreground, 0.18)
   readonly property string panelFontFamily: "sans-serif"
-  readonly property string language: Preferences.language(Preferences.value(settings, "language"), Qt.locale().name)
+  readonly property string language: FoamyI18n.language
   property bool editingSettings: false
-  property string settingsError: ""
-  property var pendingPreferences: ({})
   function tr(text) {
-    return Preferences.text(text, language)
+    return FoamyI18n.t(text)
   }
   function openSettings() {
     editingSettings = true
@@ -72,45 +69,8 @@ Panel {
       settingsButton.forceActiveFocus()
     })
   }
-  function savePreference(key, value) {
-    if (!Preferences.valid(key, value)) {
-      settingsError = tr("Invalid setting.")
-      return
-    }
-    settingsError = ""
-    pendingPreferences[key] = value
-    flushPreferences()
-  }
-  function flushPreferences() {
-    if (preferencesSave.running)
-      return
-    var keys = Object.keys(pendingPreferences)
-    if (!keys.length)
-      return
-    var key = keys[0], value = pendingPreferences[key]
-    delete pendingPreferences[key]
-    // Use the shell's writer so other widgets and pending display drafts stay intact.
-    preferencesSave.command = ["omarchy-shell", "shell", "setBarWidget", root.moduleName, key, " " + JSON.stringify(value), "{}"]
-    preferencesSave.running = true
-  }
-  Process {
-    id: preferencesSave
-    stdout: StdioCollector {
-      id: preferencesOutput
-      waitForEnd: true
-    }
-    stderr: StdioCollector {
-      id: preferencesError
-      waitForEnd: true
-    }
-    onExited: function (code) {
-      if (code !== 0 || preferencesOutput.text.trim() !== "ok") {
-        root.settingsError = root.tr("Could not save settings.")
-        console.warn("foamy.monitor: shell settings write failed (" + code + ")")
-      }
-      Qt.callLater(root.flushPreferences)
-    }
-  }
+
+
   readonly property string bridge: decodeURIComponent(String(Qt.resolvedUrl("display_transaction.py")).replace(/^file:\/\//, ""))
   readonly property string fluxCastBridge: decodeURIComponent(String(Qt.resolvedUrl("fluxcast_bridge.py")).replace(/^file:\/\//, ""))
   property var transaction: ({
@@ -537,7 +497,6 @@ Panel {
       tab: activeTab,
       editingSettings: editingSettings,
       language: language,
-      settingsError: settingsError,
       wirelessDisplay: {
         phase: castPhase,
         target: castTargetName,
@@ -921,15 +880,9 @@ Panel {
 
               visible: root.editingSettings
               width: panelScroll.width
-              settings: root.settings
               language: root.language
-              saving: preferencesSave.running
-              error: root.settingsError
               pendingDisplayChanges: root.changeCount > 0
               onBack: root.closeSettings()
-              onSave: function(key, value) {
-                root.savePreference(key, value);
-              }
             }
 
           }

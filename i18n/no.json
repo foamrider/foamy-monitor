@@ -1,5 +1,4 @@
-// Language is stored by Omarchy in the foamy.monitor widget settings.
-var norwegian = {
+{
   "Displays": "Skjermer",
   "Your workspace": "Arbeidsområdet ditt",
   "Display": "Skjerm",
@@ -29,9 +28,6 @@ var norwegian = {
   "Revert": "Tilbakestill",
   "Plugin settings": "Plugininnstillinger",
   "Back": "Tilbake",
-  "Language": "Språk",
-  "System": "System",
-  "Follows your system language.": "Følger systemspråket ditt.",
   "Pending display changes are preserved.": "Ventende skjermendringer er bevart.",
   "Appearance & scaling": "Utseende og skalering",
   "Text size": "Tekststørrelse",
@@ -106,31 +102,6 @@ var norwegian = {
   "Could not read GTK scale": "Kunne ikke lese GTK-skaleringen",
   "Could not set brightness": "Kunne ikke endre lysstyrken",
   "Could not update advanced settings": "Kunne ikke oppdatere de avanserte innstillingene",
-  "Wireless display scan failed": "Søk etter trådløse skjermer mislyktes"
+  "Wireless display scan failed": "Søk etter trådløse skjermer mislyktes",
+  "Language follows Omarchy → Setup → Language.": "Språket følger Omarchy → Oppsett → Språk."
 }
-
-function valid(key, value) {
-  return key === "language" && ["system", "en", "nb"].indexOf(value) >= 0
-}
-function value(settings, key) {
-  return key === "language" && settings && valid(key, settings[key]) ? settings[key] : "system"
-}
-function language(mode, locale) {
-  if (mode === "en" || mode === "nb") return mode
-  return /^(nb|nn|no)(_|-|$)/i.test(locale || "") ? "nb" : "en"
-}
-function text(label, lang) {
-  if (lang !== "nb") return label
-  if (norwegian[label]) return norwegian[label]
-  // Keep command-specific detail while translating known recovery messages.
-  var prefixes = [
-    ["Please install ", "Installer "],
-    ["Could not read display settings: ", "Kunne ikke lese skjerminnstillingene: "],
-    ["Unsupported scale for ", "Skaleringen støttes ikke for "],
-    ["Unsupported resolution or refresh rate for ", "Oppløsningen eller oppdateringsfrekvensen støttes ikke for "]
-  ]
-  for (var i = 0; i < prefixes.length; i++)
-    if (label.indexOf(prefixes[i][0]) === 0) return prefixes[i][1] + label.slice(prefixes[i][0].length)
-  return label
-}
-if (typeof module !== "undefined") module.exports = { valid: valid, value: value, language: language, text: text }
