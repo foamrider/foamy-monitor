@@ -103,5 +103,9 @@
   "Could not set brightness": "Kunne ikke endre lysstyrken",
   "Could not update advanced settings": "Kunne ikke oppdatere de avanserte innstillingene",
   "Wireless display scan failed": "Søk etter trådløse skjermer mislyktes",
-  "Language follows Omarchy → Setup → Language.": "Språket følger Omarchy → Oppsett → Språk."
+  "Language follows Omarchy → Setup → Language.": "Språket følger Omarchy → Oppsett → Språk.",
+  "Please install %1": "Installer %1",
+  "Could not read display settings: %1": "Kunne ikke lese skjerminnstillingene: %1",
+  "Unsupported scale for %1": "Skaleringen støttes ikke for %1",
+  "Unsupported resolution or refresh rate for %1": "Oppløsningen eller oppdateringsfrekvensen støttes ikke for %1"
 }

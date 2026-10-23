@@ -51,8 +51,18 @@ Panel {
   readonly property string panelFontFamily: "sans-serif"
   readonly property string language: FoamyI18n.language
   property bool editingSettings: false
-  function tr(text) {
-    return FoamyI18n.t(text)
+  function tr(text, values) {
+    // Helpers return English recovery messages plus opaque package/monitor details.
+    // Translate only known prefixes; never interpret or translate the detail itself.
+    if (values === undefined) {
+      var prefixes = ["Please install ", "Could not read display settings: ",
+        "Unsupported scale for ", "Unsupported resolution or refresh rate for "]
+      for (var i = 0; i < prefixes.length; i++) {
+        if (String(text).indexOf(prefixes[i]) === 0)
+          return FoamyI18n.t(prefixes[i] + "%1", String(text).slice(prefixes[i].length))
+      }
+    }
+    return FoamyI18n.t(text, values)
   }
   function openSettings() {
     editingSettings = true

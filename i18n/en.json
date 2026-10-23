@@ -103,5 +103,9 @@
   "Could not set brightness": "Could not set brightness",
   "Could not update advanced settings": "Could not update advanced settings",
   "Wireless display scan failed": "Wireless display scan failed",
-  "Language follows Omarchy → Setup → Language.": "Language follows Omarchy → Setup → Language."
+  "Language follows Omarchy → Setup → Language.": "Language follows Omarchy → Setup → Language.",
+  "Please install %1": "Please install %1",
+  "Could not read display settings: %1": "Could not read display settings: %1",
+  "Unsupported scale for %1": "Unsupported scale for %1",
+  "Unsupported resolution or refresh rate for %1": "Unsupported resolution or refresh rate for %1"
 }
