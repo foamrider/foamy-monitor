@@ -23,7 +23,7 @@ Use one display-control plugin at a time; disable any previous local replacement
 - Use **Display** for resolution, refresh rate, scale, orientation, and brightness.
 - Use **Advanced** for text size, cursor size, and GTK scale.
 - Use **Wireless** to find a receiver and cast the selected display.
-- Open the cog to change language. Plugin preferences are stored in `shell.json`.
+- Open the cog for language setup guidance. Display settings remain available in the main panel.
 
 **Save** starts a 15-second trial. Choose **Keep settings** to save, or **Revert**
 to restore the previous configuration. The trial also reverts if it times out.
@@ -57,3 +57,7 @@ Licensed under [MIT](LICENSE), with [Monitor Settings Extender](LICENSE-MONITOR-
 [Omarchy](LICENSE-OMARCHY), and [Lucide](LICENSE-LUCIDE) notices.
 
 Provided **as is**, without warranty or guaranteed support. Use at your own risk.
+
+Language follows **Omarchy → Setup → Language** on Omarchy 4.5. Plugin language overrides are no longer used. Omarchy 4.0 displays the plugin in English. Missing translations fall back to English.
+
+Translation checks: `python3 tests/i18n-runtime.py` uses the installed shell. Set `OMARCHY_PATH` to a 4.5 source tree to check live language switching against that version.

@@ -1,20 +1,15 @@
 import QtQuick
 import QtQuick.Layouts
-import "Preferences.js" as Preferences
 import qs.Commons
 
 Column {
   id: root
-  required property var settings
   required property string language
-  property bool saving: false
-  property string error: ""
   property bool pendingDisplayChanges: false
   property alias backTarget: backButton
   signal back
-  signal save(string key, var value)
   function tr(text) {
-    return Preferences.text(text, language)
+    return FoamyI18n.t(text)
   }
   function focusBack() {
     backButton.forceActiveFocus()
@@ -38,47 +33,25 @@ Column {
       font.pixelSize: Style.space(13)
       Layout.fillWidth: true
     }
-    Text {
-      text: root.tr("Saving…")
-      visible: root.saving
-      color: root.secondary
-      font.family: "sans-serif"
-      font.pixelSize: Style.space(11)
-    }
+
   }
-  MonitorDropdown {
+
+  Text {
+    text: root.tr("Language follows Omarchy → Setup → Language.")
     width: parent.width - root.padding * 2
-    label: root.tr("Language")
-    fontFamily: "sans-serif"
-    value: Preferences.value(root.settings, "language")
-    enabled: !root.saving
-    options: [
-      {
-        value: "system",
-        label: root.tr("System")
-      },
-      {
-        value: "en",
-        label: "English"
-      },
-      {
-        value: "nb",
-        label: "Norsk bokmål"
-      }
-    ]
-    onChanged: function (value) {
-      root.save("language", value)
-    }
+    wrapMode: Text.WordWrap
+    textFormat: Text.PlainText
+    color: root.secondary
   }
   Text {
     width: parent.width - root.padding * 2
-    visible: root.error !== "" || root.pendingDisplayChanges
-    text: root.error || (root.pendingDisplayChanges ? root.tr("Pending display changes are preserved.") : "")
-    color: root.error ? Color.urgent : root.secondary
+    visible: root.pendingDisplayChanges
+    text: root.tr("Pending display changes are preserved.")
+    color: root.secondary
     font.family: "sans-serif"
     font.pixelSize: Style.space(12)
     wrapMode: Text.WordWrap
     textFormat: Text.PlainText
-    Accessible.role: root.error ? Accessible.AlertMessage : Accessible.StaticText
+    Accessible.role: Accessible.StaticText
   }
 }
