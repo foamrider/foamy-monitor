@@ -1,7 +1,3 @@
-singleton FoamyI18n 1.0 FoamyI18n.qml
-MonitorAction 1.0 MonitorAction.qml
-MonitorDropdown 1.0 MonitorDropdown.qml
-MonitorIcon 1.0 MonitorIcon.qml
-MonitorPopup 1.0 MonitorPopup.qml
+singleton MonitorService 1.0 MonitorService.qml
+MonitorView 1.0 MonitorView.qml
 Panel 1.0 Panel.qml
-SettingsPane 1.0 SettingsPane.qml
