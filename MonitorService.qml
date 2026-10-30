@@ -187,6 +187,14 @@ Singleton {
     if (!name || !known || !known.available) return -1
     var value = Model.clampBrightness(percent)
     _store(name, { available: true, percent: value })
+    // A level being written supersedes changes still waiting for a read
+    // (slider, IPC level or a step on a fresh reading); otherwise a later
+    // read would apply a stale step over it.
+    if (brightnessAfterRead[name] !== undefined) {
+      var after = Object.assign({}, brightnessAfterRead)
+      delete after[name]
+      brightnessAfterRead = after
+    }
     var writes = Object.assign({}, brightnessWrites)
     writes[name] = value
     brightnessWrites = writes

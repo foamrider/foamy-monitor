@@ -250,6 +250,13 @@ ShellRoot {
       shell.service.brightness = unknown
       eq(shell.service.changeBrightness("DP-1", { value: 40 }, null), 0, "an unread display queues the level")
       eq(shell.service.changeBrightness("DP-1", { delta: 5 }, null), 0, "and the following step")
+      // A step waiting on a stale reading, then an explicit level: the level wins for good.
+      var stale = Object.assign({}, shell.service.brightness)
+      stale["eDP-1"] = { available: true, percent: 30, at: Date.now() - 10000 }
+      shell.service.brightness = stale
+      eq(shell.service.changeBrightness("eDP-1", { delta: 5 }, null), 0, "a step on a stale reading waits for a read")
+      eq(shell.service.changeBrightness("eDP-1", { value: 40 }, null), 40, "an explicit level is written at once")
+      eq(shell.service.brightnessAfterRead["eDP-1"], undefined, "and supersedes the waiting step")
       // A scan that is still running when the plugin goes away.
       shell.service.wirelessWanted = true
       shell.service.startWirelessScan()
@@ -263,6 +270,8 @@ ShellRoot {
     onTriggered: {
       eq(shell.service.scanRunning, true, "scan started")
       eq(shell.service.brightness["DP-1"].percent, 45, "40 then +5 lands on 45, not the hardware level + 5")
+      eq(shell.service.brightness["eDP-1"].percent, 40, "the explicit level stays after the read lands")
+      eq(shell.service.brightnessAfterRead["eDP-1"], undefined, "no stale step left behind")
       shell.panelCount = 0
       stepEight.start()
     }
