@@ -29,9 +29,8 @@ ShellRoot {
   function eq(actual, expected, label) {
     check(actual === expected, label + ": got " + JSON.stringify(actual) + ", expected " + JSON.stringify(expected))
   }
-  function key(view, text) {
-    try { view.textKey(text, 0) } catch (error) { view.textKey(text) }
-  }
+  FoamyCursor { id: keys }
+  function key(view, text) { keys.emitTextKey(view, text) }
   function panel(i) { return panels.itemAt(i) }
   readonly property var service: Monitor.MonitorService
 
@@ -83,6 +82,7 @@ ShellRoot {
     onTriggered: {
       eq(shell.leaders(), 1, "one leader across three bar instances")
       eq(shell.service.members, 3, "three members")
+      eq(panel(0).barGlyph.codePointAt(0), Quickshell.screens.length > 1 ? 0xf037a : 0xf0379, "bar glyph survives as an escape")
       eq(shell.service.statusRuns, 1, "one startup status for every instance")
       eq(shell.service.liveMonitors.length, 3, "three displays read")
       check(shell.service.statePath.indexOf("/state.json") > 0, "state file reported: " + shell.service.statePath)
@@ -244,6 +244,12 @@ ShellRoot {
     onTriggered: {
       eq(shell.service.brightness["DP-2"].percent, 85, "the step lands on the fresh level (80 + 5)")
       eq(shell.service.changeBrightness("DP-2", { delta: 5 }, panel(2)), 90, "steps within the burst reuse it")
+      // An explicit level queued behind a read keeps later steps relative to it.
+      var unknown = Object.assign({}, shell.service.brightness)
+      delete unknown["DP-1"]
+      shell.service.brightness = unknown
+      eq(shell.service.changeBrightness("DP-1", { value: 40 }, null), 0, "an unread display queues the level")
+      eq(shell.service.changeBrightness("DP-1", { delta: 5 }, null), 0, "and the following step")
       // A scan that is still running when the plugin goes away.
       shell.service.wirelessWanted = true
       shell.service.startWirelessScan()
@@ -256,6 +262,7 @@ ShellRoot {
     interval: 1200
     onTriggered: {
       eq(shell.service.scanRunning, true, "scan started")
+      eq(shell.service.brightness["DP-1"].percent, 45, "40 then +5 lands on 45, not the hardware level + 5")
       shell.panelCount = 0
       stepEight.start()
     }

@@ -103,3 +103,10 @@ assert.equal(Model.brightnessFresh({ available: true, percent: 50, at: 1000 }, 2
 assert.equal(Model.brightnessFresh({ available: true, percent: 50, at: 1000 }, 3001), false)
 assert.equal(Model.brightnessFresh({ available: true, percent: 50 }, 1000), false)
 assert.equal(Model.brightnessFresh(null, 1000), false)
+
+// Changes queued behind a read: an explicit level keeps later steps relative to it.
+assert.deepEqual(Model.mergeBrightnessChange(null, { delta: 5 }), { delta: 5 })
+assert.deepEqual(Model.mergeBrightnessChange({ delta: 5 }, { delta: -10 }), { delta: -5 })
+assert.deepEqual(Model.mergeBrightnessChange({ value: 40 }, { delta: 5 }), { value: 45 })
+assert.deepEqual(Model.mergeBrightnessChange({ delta: 5 }, { value: 40 }), { value: 40 })
+assert.deepEqual(Model.mergeBrightnessChange({ value: 40 }, { value: 70 }), { value: 70 })

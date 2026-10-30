@@ -52,6 +52,9 @@ time.sleep(0.05)
 with open(os.environ["FOAMY_CALLS"] + ".ddc", "a") as ddc:
     ddc.write("end %f\\n" % time.monotonic())
 if any(a.endswith("%") for a in sys.argv[1:]):
+    # Like hardware, a written level reads back.
+    with open(os.environ["FOAMY_CALLS"] + ".brightness", "w") as level:
+        level.write(sys.argv[-1].rstrip("%"))
     sys.exit(0)
 level = os.environ["FOAMY_CALLS"] + ".brightness"
 print(open(level).read().strip() if os.path.exists(level) else "%d" % BRIGHTNESS)

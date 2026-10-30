@@ -205,9 +205,8 @@ Singleton {
       return setBrightness(name, absolute ? change.value : known.percent + change.delta)
     }
     var after = Object.assign({}, brightnessAfterRead)
-    var earlier = after[name]
-    // Wheel notches that arrive before the first read add up.
-    after[name] = earlier && earlier.delta !== undefined && change.delta !== undefined ? { delta: earlier.delta + change.delta } : change
+    // Changes that arrive before the read lands combine (Model.mergeBrightnessChange).
+    after[name] = Model.mergeBrightnessChange(after[name], change)
     brightnessAfterRead = after
     var requesters = Object.assign({}, _stepRequester)
     requesters[name] = requester || null
@@ -223,6 +222,8 @@ Singleton {
       var writes = Object.assign({}, brightnessWrites)
       delete writes[job.name]
       brightnessWrites = writes
+      // A read queued before this write would only bring back an older level.
+      brightnessReads = brightnessReads.filter(function(n) { return n !== job.name })
       brightnessProc.command = ["omarchy-brightness-display", "--no-osd", "--monitor", job.name, job.value + "%"]
     } else {
       brightnessReads = brightnessReads.filter(function(n) { return n !== job.name })

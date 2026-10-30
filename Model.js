@@ -261,6 +261,14 @@ function brightnessFresh(reading, now) {
   return !!reading && typeof reading.at === "number" && now - reading.at >= 0 && now - reading.at <= BRIGHTNESS_FRESH_MS
 }
 
+// Combine a brightness change with one still waiting for a read: an absolute
+// value wins and later steps apply to it; steps without one add up.
+function mergeBrightnessChange(earlier, change) {
+  if (!earlier || change.value !== undefined) return change
+  if (earlier.value !== undefined) return { value: earlier.value + change.delta }
+  return { delta: earlier.delta + change.delta }
+}
+
 function parseBrightness(code, text) {
   var raw = String(text || "").trim()
   var value = Number(raw)
@@ -317,6 +325,7 @@ if (typeof module !== "undefined") {
     nextBrightnessJob: nextBrightnessJob,
     parseBrightness: parseBrightness,
     brightnessFresh: brightnessFresh,
+    mergeBrightnessChange: mergeBrightnessChange,
     viewStops: viewStops
   }
 }
