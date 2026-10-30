@@ -200,10 +200,17 @@ PanelKeyCatcher {
   function stepBrightness(direction) {
     if (brightnessAvailable) MonitorService.setBrightness(brightnessTarget, brightnessPercent + direction * 5)
   }
-  function nudge(dx, dy) {
+  // Key repeat outruns the patch helper, so nudges add up on an optimistic
+  // position instead of re-reading a draft that has not caught up yet.
+  property var movingAt: null
+  onMovingChanged: {
     var monitor = transaction.draft.find(function(m) { return m.name === view.moving })
-    if (!monitor) { moving = ""; return }
-    moveMonitor(monitor.name, monitor.x + dx * 10, monitor.y + dy * 10)
+    movingAt = monitor ? { x: monitor.x, y: monitor.y } : null
+  }
+  function nudge(dx, dy) {
+    if (!movingAt) { moving = ""; return }
+    movingAt = { x: movingAt.x + dx * 10, y: movingAt.y + dy * 10 }
+    moveMonitor(moving, movingAt.x, movingAt.y)
   }
 
   onMoveRequested: function(dx, dy) {
@@ -259,7 +266,18 @@ PanelKeyCatcher {
       else view.forceActiveFocus()
     }
   }
-  Component.onCompleted: { ensureSelection(); syncWireless(); refreshBrightness() }
+  // The body is built lazily on the first open, which can already be into
+  // Settings (IPC `settings`) or a running trial: the change handlers above
+  // fired before this view existed, so apply their effect here.
+  Component.onCompleted: {
+    ensureSelection()
+    syncWireless()
+    refreshBrightness()
+    if (editing) Qt.callLater(function() { settingsPage.resetScroll(); settingsPage.focusBack() })
+    else if (testing) Qt.callLater(function() { view.place("revert") })
+  }
+  // Focus is requested even without a window (offscreen tests); activeFocus follows once shown.
+  readonly property bool settingsBackFocused: settingsPage.backTarget ? settingsPage.backTarget.focus : false
   Connections {
     target: MonitorService
     function onTransactionChanged() { Qt.callLater(view.ensureSelection) }

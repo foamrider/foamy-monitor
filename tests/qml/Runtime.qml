@@ -176,6 +176,9 @@ ShellRoot {
       shell.key(view, "m")
       check(view.moving !== "", "m picks up the display under the cursor")
       var before = shell.service.transaction.draft.find(function(m) { return m.name === view.moving }).x
+      // Three presses before the helper answers still add up to 30 px.
+      view.moveRequested(1, 0)
+      view.moveRequested(1, 0)
       view.moveRequested(1, 0)
       shell.runsBefore = before
       view.activateRequested()
@@ -190,6 +193,9 @@ ShellRoot {
       eq(view.blocked, false, "back from Settings")
       view.closeRequested()
       eq(first.opened, false, "Esc closes")
+      // IPC `settings` as the first action: the lazy body is built straight
+      // into Settings and Back must own the keys.
+      panel(1).openSettings()
       // Brightness from three bars at once: one DDC job at a time.
       for (var i = 0; i < 3; i++) shell.service.changeBrightness(shell.service.liveMonitors[i].name, { delta: 5 }, panel(i))
       eq(first.brightnessIpc("abc"), "error: expected a percentage such as 40, +5 or -5", "IPC rejects junk")
@@ -202,11 +208,15 @@ ShellRoot {
     interval: 1500
     onTriggered: {
       var draft = shell.service.transaction.draft
-      eq(draft.find(function(m) { return m.name === "DP-1" }).x, shell.runsBefore + 10, "the arrow nudged the display by 10 px")
+      eq(draft.find(function(m) { return m.name === "DP-1" }).x, shell.runsBefore + 30, "three quick arrows nudge the display by 30 px")
       eq(shell.service.brightness["DP-2"].percent, 55, "a wheel step before the first read lands after it")
       check(mockBar.summoned.length >= 1 && mockBar.summoned[0].id === "omarchy.osd" && mockBar.summoned[0].payload.icon === "brightness",
         "the wheel shows the Omarchy OSD: " + JSON.stringify(mockBar.summoned))
       eq(shell.service.brightnessProc.running, false, "brightness queue drained")
+      var second = panel(1).popup.bodyItem
+      check(second !== null && second.editing, "settings opened on a fresh panel")
+      check(second !== null && second.settingsBackFocused, "Back has focus when Settings is the first view")
+      panel(1).close()
       // The level changed elsewhere (laptop keys, the monitor's buttons) while
       // every popup was closed: a wheel step after the burst re-reads first.
       external.payload = ""
