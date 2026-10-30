@@ -110,3 +110,7 @@ assert.deepEqual(Model.mergeBrightnessChange({ delta: 5 }, { delta: -10 }), { de
 assert.deepEqual(Model.mergeBrightnessChange({ value: 40 }, { delta: 5 }), { value: 45 })
 assert.deepEqual(Model.mergeBrightnessChange({ delta: 5 }, { value: 40 }), { value: 40 })
 assert.deepEqual(Model.mergeBrightnessChange({ value: 40 }, { value: 70 }), { value: 70 })
+
+// Applying, saving or reverting: no Settings stop (the change owns the popup).
+assert.deepEqual(Model.viewStops("Advanced", false, { changes: 0, busy: true }),
+  ["tab:Display", "tab:Advanced", "tab:Wireless", "textSize", "cursorSize", "gtkScale"])

@@ -299,7 +299,7 @@ function viewStops(tab, testing, counts) {
   }
   if (testing) list.push("revert", "keep")
   else if (c.changes > 0) list.push("discard", "save")
-  if (!testing) list.push("settings")
+  if (!testing && !c.busy) list.push("settings")
   return list
 }
 

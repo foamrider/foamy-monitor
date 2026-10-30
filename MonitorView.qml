@@ -54,7 +54,7 @@ PanelKeyCatcher {
   readonly property var stops: Model.viewStops(activeTab, testing, {
     boxes: enabledMonitorInfos.length, offline: offlineMonitors.length,
     peers: MonitorService.castRunning || MonitorService.scanRunning ? 0 : MonitorService.wirelessPeers.length,
-    changes: busy ? 0 : changeCount
+    changes: busy ? 0 : changeCount, busy: busy
   })
   readonly property string cursorKey: cursor.index >= 0 && cursor.index < stops.length ? stops[cursor.index] : ""
   function hasCursor(key) { return cursorKey === key }
@@ -250,7 +250,7 @@ PanelKeyCatcher {
   }
   onTabRequested: function(direction) { host.switchPanel(direction) }
   onTextKey: function(text, modifiers) {
-    if (testing) return
+    if (busy) return
     if (text === "\u0013" || ((modifiers & Qt.ControlModifier) && (text === "s" || text === "S"))) { save(); return }
     if (!cursor.plain(modifiers)) return
     if (text === "s") host.openSettings()
@@ -273,6 +273,8 @@ PanelKeyCatcher {
         view.moving = ""
         scroll.contentY = 0
         view.refreshBrightness()
+        // Reopened during a trial: land on Revert again.
+        if (view.testing) view.defer(function() { view.place("revert") })
       }
     }
     function onEditingSettingsChanged() {
@@ -290,6 +292,7 @@ PanelKeyCatcher {
     else if (testing) defer(function() { view.place("revert") })
   }
   // Focus is requested even without a window (offscreen tests); activeFocus follows once shown.
+  readonly property bool footerShown: footer.shown && !editing
   readonly property bool settingsBackFocused: settingsPage.backTarget ? settingsPage.backTarget.focus : false
   Connections {
     target: MonitorService
@@ -351,7 +354,7 @@ PanelKeyCatcher {
       title: view.tr("Displays")
       meta: MonitorService.activelyCasting ? view.tr("Casting to %1", MonitorService.castTargetName)
         : view.transaction.draft.length ? FoamyI18n.tn("%1 displays on", view.activeCount) : ""
-      showSettings: !view.testing
+      showSettings: !view.busy
       settingsHasCursor: view.hasCursor("settings")
       onSettingsClicked: view.host.openSettings()
       onSettingsHovered: function(hovered) { if (hovered) view.hover("settings") }

@@ -28,7 +28,13 @@ Panel {
 
   FoamyMember { id: member; scope: "monitor"; demanding: root.opened }
 
-  function openSettings() { settingsState.show() }
+  // A display change in progress (applying, the 15 s trial, saving,
+  // reverting) owns the popup: Settings would cover Keep/Revert and the
+  // countdown, so it opens the main view instead and closes if a trial starts.
+  function openSettings() {
+    if (MonitorService.busy) { open(); return }
+    settingsState.show()
+  }
   function closeSettings() { settingsState.hide() }
 
   onOpenedChanged: {
@@ -48,10 +54,19 @@ Panel {
   function reopenForTrial() {
     if (!MonitorService.testing || root.opened) return
     if (member.members <= 1 || root.screenName === MonitorService.focusedMonitor) root.open()
+    // No bar on the focused output (or it is unknown): the leader shows it.
+    else if (member.isLeader && !root.barOnFocused()) root.open()
+  }
+  function barOnFocused() {
+    var screens = Quickshell.screens
+    for (var i = 0; i < screens.length; i++)
+      if (String(screens[i].name) === MonitorService.focusedMonitor) return true
+    return false
   }
   Connections {
     target: MonitorService
     function onTestingChanged() { root.reopenForTrial() }
+    function onBusyChanged() { if (MonitorService.busy) root.closeSettings() }
     function onBrightnessStepped(requester, monitor, percent) {
       if (requester === root && percent > 0) root.showBrightnessOsd(percent)
     }

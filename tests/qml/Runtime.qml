@@ -70,6 +70,18 @@ ShellRoot {
 
   Component.onCompleted: stepOne.start()
 
+  function setPhase(phase) {
+    sh("python3 - '" + service.statePath + "' " + phase + " <<'PY'\nimport json, sys, time\np, phase = sys.argv[1], sys.argv[2]\ns = json.load(open(p))\ns.update(phase=phase, deadline=time.time() + 15 if phase == 'testing' else 0, token='runtime-trial')\ns['revision'] = s.get('revision', 0) + 1\njson.dump(s, open(p, 'w'))\nPY")
+  }
+  function leaderPanel() {
+    for (var i = 0; i < panelCount; i++) if (panel(i).member.isLeader) return panel(i)
+    return null
+  }
+  function openCount() {
+    var count = 0
+    for (var i = 0; i < panelCount; i++) if (panel(i).opened) count++
+    return count
+  }
   function leaders() {
     var count = 0
     for (var i = 0; i < panelCount; i++) if (panel(i).member.isLeader) count++
@@ -374,6 +386,55 @@ ShellRoot {
       eq(shell.service.active, true, "service still active")
       eq(shell.service.scanRunning, true, "the scan survives the rebuild")
       eq(shell.leaders(), 1, "one leader after the rebuild")
+      // ---- A running trial against every UI state ----
+      shell.leaderPanel().openSettings()
+      eq(shell.leaderPanel().editingSettings, true, "Settings open before the trial")
+      // The trial worker's phase change, written to the helper's state file.
+      shell.setPhase("testing")
+      trialA.start()
+    }
+  }
+  Timer {
+    id: trialA
+    interval: 1000
+    onTriggered: {
+      eq(shell.service.testing, true, "the trial arrives through the state file")
+      eq(shell.leaderPanel().editingSettings, false, "a starting trial closes Settings")
+      shell.leaderPanel().openSettings()
+      eq(shell.leaderPanel().editingSettings, false, "Settings (IPC or key) cannot cover a running trial")
+      eq(shell.leaderPanel().opened, true, "it shows the trial instead")
+      eq(shell.openCount(), 1, "one popup shows the trial")
+      var view = shell.leaderPanel().popup.bodyItem
+      eq(JSON.stringify(view.stops), JSON.stringify(["revert", "keep"]), "only Revert and Keep take the cursor")
+      view.setTab("Advanced")
+      check(view.footerShown, "the trial footer shows on Advanced")
+      view.setTab("Wireless")
+      check(view.footerShown, "and on Wireless")
+      shell.key(view, "s")
+      eq(shell.leaderPanel().editingSettings, false, "s does nothing during a trial")
+      shell.leaderPanel().close()
+      trialB.start()
+    }
+  }
+  Timer {
+    id: trialB
+    interval: 300
+    onTriggered: {
+      eq(shell.openCount(), 1, "closing the popup during a trial reopens it")
+      var view = shell.leaderPanel().popup.bodyItem
+      eq(view.cursorKey, "revert", "the reopened trial lands on Revert")
+      shell.setPhase("idle")
+      trialC.start()
+    }
+  }
+  Timer {
+    id: trialC
+    interval: 1500
+    onTriggered: {
+      eq(shell.service.testing, false, "trial over")
+      shell.leaderPanel().openSettings()
+      eq(shell.leaderPanel().editingSettings, true, "Settings opens again once the change is done")
+      shell.leaderPanel().close()
       shell.panelCount = 0
       stepEight.start()
     }
