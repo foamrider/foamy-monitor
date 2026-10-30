@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -134,6 +135,60 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
         self.assertIn('hl.monitor({ output = "", mode = "preferred", scale = 1.25 })', result)
         self.assertIn('-- hl.monitor({ output = "DP-1", scale = 9 })', result)
         self.assertEqual(update_config(result, [changed]), result)
+
+    def test_internal_panel_rules_use_the_connector_clamshell_reads(self):
+        # omarchy-hyprland-monitor-clamshell (4.0.6 and 4.5) finds the internal
+        # panel's scale/position with this sed match on output = "<connector>".
+        def clamshell_value(source, output, key):
+            code = re.sub(r"--.*$", "", source, flags=re.M)
+            for line in code.splitlines():
+                if re.match(r'^\s*hl\.monitor\(\{.*output\s*=\s*"' + re.escape(output) + '"', line):
+                    match = re.match(r'.*[{,;\s]' + key + r'\s*=\s*("[^"]*"|[^,;}\s]+)\s*([,;}].*)?$', line)
+                    if match:
+                        return match[1].strip('"')
+            return ""
+
+        panel = dict(monitor("eDP-1"), scale=1.6, width=2880, height=1800, x=0, y=0,
+                     availableModes=["2880x1800@60.00Hz"])
+        external = dict(monitor("DP-1"), x=1800, y=0)
+        added = update_config(OMARCHY_CONFIG, [panel, external], [panel, external])
+        self.assertIn('output = "eDP-1"', added)
+        self.assertIn('output = "desc:Test DP-1"', added)
+        self.assertEqual(clamshell_value(added, "eDP-1", "scale"), "1.6")
+        self.assertEqual(clamshell_value(added, "eDP-1", "position"), "0x0")
+        # An older save keyed the panel by description; the next save moves it to the connector.
+        legacy = OMARCHY_CONFIG + 'hl.monitor({ output = "desc:Test eDP-1", mode = "2880x1800@60", scale = 2 })\n'
+        moved = update_config(legacy, [panel], [panel, external])
+        self.assertNotIn("desc:Test eDP-1", moved)
+        self.assertEqual(clamshell_value(moved, "eDP-1", "scale"), "1.6")
+        # A mirror of the panel names the connector too.
+        mirrored = update_config(OMARCHY_CONFIG, [dict(external, mirrorOf="eDP-1")], [panel, external])
+        self.assertIn('mirror = "eDP-1"', mirrored)
+
+    def test_saved_rules_keep_following_omarchy_scale_knob(self):
+        # omarchy-hyprland-monitor-scaling persists by rewriting this local.
+        def scaling_script(source, value):
+            return re.sub(r"(?m)^local omarchy_monitor_scale = .*", f"local omarchy_monitor_scale = {value}", source)
+
+        original = monitor()
+        moved = dict(original, x=100)
+        result = update_config(OMARCHY_CONFIG, [moved], [moved], [original])
+        self.assertIn("scale = omarchy_monitor_scale", result.splitlines()[-1])
+        self.assertIn("local omarchy_monitor_scale = 1.6", scaling_script(result, 1.6))
+        self.assertEqual(update_config(result, [moved], [moved], [original]), result)
+        # The same rule keeps the reference on a later save that leaves the scale alone.
+        again = dict(moved, x=200)
+        self.assertIn("scale = omarchy_monitor_scale", update_config(result, [again], [again], [moved]).splitlines()[-1])
+        # Choosing a scale in the panel pins it, unless it is the knob's own number.
+        scaled = dict(moved, scale=1.25)
+        self.assertIn("scale = 1.25", update_config(result, [scaled], [scaled], [moved]))
+        numeric = scaling_script(OMARCHY_CONFIG, 1.25)
+        self.assertIn("scale = omarchy_monitor_scale", update_config(numeric, [scaled], [scaled], [moved]).splitlines()[-1])
+        # Without Omarchy's knob (or with a custom catch-all) the scale stays literal.
+        custom = 'hl.monitor({ output = "", mode = "preferred", scale = 1 })\n'
+        self.assertIn("scale = 1,", update_config(custom, [moved], [moved], [original]))
+        reassigned = OMARCHY_CONFIG + "omarchy_monitor_scale = 2\n"
+        self.assertNotIn("scale = omarchy_monitor_scale,", update_config(reassigned, [moved], [moved], [original]).splitlines()[-1])
 
     def test_config_rejects_ambiguous_and_dynamic_rules(self):
         for source in ['hl.monitor({ output = output, scale = 1 })',

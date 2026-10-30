@@ -422,7 +422,7 @@ def command(store: Store, action: str, request: dict[str, Any]) -> dict[str, Any
             if run("hyprctl", "configerrors"):
                 raise ValueError("Fix Hyprland configuration errors before saving")
             token = uuid.uuid4().hex
-            config_after = update_config(config, edited, state["draft"]) if edited else config
+            config_after = update_config(config, edited, state["draft"], state["base"]) if edited else config
             if gtk_changed:
                 config_after = update_gtk_scale(config_after, gtk["value"])
                 state["gtkEnvironmentBefore"] = next((line.split("=", 1)[1]
