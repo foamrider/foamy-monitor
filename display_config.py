@@ -90,6 +90,16 @@ def selector(monitor: dict[str, Any]) -> str:
     return monitor["selector"]
 
 
+def without_comments(source: str) -> str:
+    """The source with every Lua comment (line and --[[ block ]]) blanked.
+
+    Uses the same tokenizer as the rule parser, so comment markers inside
+    strings stay literal; newlines are kept so line-anchored checks still work.
+    """
+    return "".join(re.sub(r"[^\n]", " ", m.group()) if m.group().startswith("--") else m.group()
+                   for m in TOKEN.finditer(source))
+
+
 def monitor_scale_local(source: str) -> tuple[bool, float | None]:
     """Whether Omarchy's scale knob drives the catch-all rule, and its number.
 
@@ -97,7 +107,7 @@ def monitor_scale_local(source: str) -> tuple[bool, float | None]:
     `local omarchy_monitor_scale = …`. Rules that name the local keep following
     it; a literal scale would silently pin that display.
     """
-    code = re.sub(r"--[^\n]*", "", source)
+    code = without_comments(source)
     declarations = re.findall(r'(?m)^[ \t]*local[ \t]+' + SCALE_LOCAL + r'[ \t]*=[ \t]*("[^"\n]*"|[0-9.]+)[ \t]*;?[ \t]*$', code)
     reassigned = re.search(r'(?m)^(?![ \t]*local\b).*\b' + SCALE_LOCAL + r'[ \t]*=(?!=)', code)
     catch_all = re.search(r'hl\.monitor\(\{[^\n]*output\s*=\s*""[^\n]*\bscale\s*=\s*' + SCALE_LOCAL + r'\b', code)

@@ -187,6 +187,16 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
         # Without Omarchy's knob (or with a custom catch-all) the scale stays literal.
         custom = 'hl.monitor({ output = "", mode = "preferred", scale = 1 })\n'
         self.assertIn("scale = 1,", update_config(custom, [moved], [moved], [original]))
+        # A knob that only exists inside a comment is no knob (line or block comment).
+        block = "--[[\n" + OMARCHY_CONFIG + "]]\nhl.monitor({ output = \"\", mode = \"preferred\", scale = 1 })\n"
+        self.assertIn("scale = 1,", update_config(block, [moved], [moved], [original]).splitlines()[-1])
+        level = "--[==[ old\n" + OMARCHY_CONFIG + "]==]\nhl.monitor({ output = \"\", scale = 1 })\n"
+        self.assertIn("scale = 1,", update_config(level, [moved], [moved], [original]).splitlines()[-1])
+        commented = "".join("-- " + line + "\n" for line in OMARCHY_CONFIG.splitlines())
+        self.assertIn("scale = 1,", update_config(commented, [moved], [moved], [original]).splitlines()[-1])
+        # Comment markers inside a string are not comments.
+        quoted = OMARCHY_CONFIG.replace('-- Omarchy', 'hl.env("NOTE", "--[[ not a comment") -- Omarchy')
+        self.assertIn("scale = omarchy_monitor_scale", update_config(quoted, [moved], [moved], [original]).splitlines()[-1])
         reassigned = OMARCHY_CONFIG + "omarchy_monitor_scale = 2\n"
         self.assertNotIn("scale = omarchy_monitor_scale,", update_config(reassigned, [moved], [moved], [original]).splitlines()[-1])
 
