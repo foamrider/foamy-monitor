@@ -53,7 +53,8 @@ with open(os.environ["FOAMY_CALLS"] + ".ddc", "a") as ddc:
     ddc.write("end %f\\n" % time.monotonic())
 if any(a.endswith("%") for a in sys.argv[1:]):
     sys.exit(0)
-print("%d" % BRIGHTNESS)
+level = os.environ["FOAMY_CALLS"] + ".brightness"
+print(open(level).read().strip() if os.path.exists(level) else "%d" % BRIGHTNESS)
 ''',
         "gsettings": LOGGER + 'print("24" if "cursor-size" in sys.argv else "\'Adwaita\'")\n',
         "omarchy-display-text-size": LOGGER,

@@ -174,9 +174,12 @@ Singleton {
     brightnessReads = brightnessReads.concat([name])
     pumpBrightness()
   }
+  // Every reading carries its time: a cached level older than a wheel burst is
+  // re-read before a relative step (laptop keys, other apps and the monitor's
+  // own buttons change it while every popup is closed).
   function _store(name, value) {
     var next = Object.assign({}, brightness)
-    next[name] = value
+    next[name] = { available: value.available, percent: value.percent, at: Date.now() }
     brightness = next
   }
   function setBrightness(name, percent) {
@@ -196,9 +199,10 @@ Singleton {
   function changeBrightness(name, change, requester) {
     var known = brightness[name]
     if (!name) return -1
-    if (known) {
+    var absolute = change.value !== undefined
+    if (known && (Model.brightnessFresh(known, Date.now()) || (absolute && known.available))) {
       if (!known.available) return -1
-      return setBrightness(name, change.value !== undefined ? change.value : known.percent + change.delta)
+      return setBrightness(name, absolute ? change.value : known.percent + change.delta)
     }
     var after = Object.assign({}, brightnessAfterRead)
     var earlier = after[name]

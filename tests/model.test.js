@@ -97,3 +97,9 @@ assert.deepEqual(Model.viewStops("Display", false, { boxes: 2, offline: 1, chang
 assert.deepEqual(Model.viewStops("Wireless", false, { peers: 2 }),
   ["tab:Display", "tab:Advanced", "tab:Wireless", "scan", "peer:0", "peer:1", "settings"])
 assert.deepEqual(Model.viewStops("Display", true, { boxes: 2, changes: 3 }), ["revert", "keep"])
+
+// A cached brightness is reused only within a wheel burst.
+assert.equal(Model.brightnessFresh({ available: true, percent: 50, at: 1000 }, 2500), true)
+assert.equal(Model.brightnessFresh({ available: true, percent: 50, at: 1000 }, 3001), false)
+assert.equal(Model.brightnessFresh({ available: true, percent: 50 }, 1000), false)
+assert.equal(Model.brightnessFresh(null, 1000), false)

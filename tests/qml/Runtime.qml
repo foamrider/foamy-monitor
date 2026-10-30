@@ -207,6 +207,33 @@ ShellRoot {
       check(mockBar.summoned.length >= 1 && mockBar.summoned[0].id === "omarchy.osd" && mockBar.summoned[0].payload.icon === "brightness",
         "the wheel shows the Omarchy OSD: " + JSON.stringify(mockBar.summoned))
       eq(shell.service.brightnessProc.running, false, "brightness queue drained")
+      // The level changed elsewhere (laptop keys, the monitor's buttons) while
+      // every popup was closed: a wheel step after the burst re-reads first.
+      external.payload = ""
+      external.command = ["sh", "-c", "printf 80 > \"$FOAMY_CALLS.brightness\""]
+      external.running = true
+      var aged = Object.assign({}, shell.service.brightness)
+      aged["DP-2"] = { available: true, percent: 55, at: Date.now() - 10000 }
+      shell.service.brightness = aged
+      stepSixB.start()
+    }
+  }
+
+  Timer {
+    id: stepSixB
+    interval: 400
+    onTriggered: {
+      eq(shell.service.changeBrightness("DP-2", { delta: 5 }, panel(2)), 0, "a stale level is read again before stepping")
+      stepSixC.start()
+    }
+  }
+
+  Timer {
+    id: stepSixC
+    interval: 1200
+    onTriggered: {
+      eq(shell.service.brightness["DP-2"].percent, 85, "the step lands on the fresh level (80 + 5)")
+      eq(shell.service.changeBrightness("DP-2", { delta: 5 }, panel(2)), 90, "steps within the burst reuse it")
       // A scan that is still running when the plugin goes away.
       shell.service.wirelessWanted = true
       shell.service.startWirelessScan()

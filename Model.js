@@ -253,6 +253,14 @@ function nextBrightnessJob(writes, reads, settling) {
   return null
 }
 
+// A cached brightness reading is trusted for a relative step only within a
+// wheel burst (each write refreshes it); older ones are read again first.
+var BRIGHTNESS_FRESH_MS = 2000
+
+function brightnessFresh(reading, now) {
+  return !!reading && typeof reading.at === "number" && now - reading.at >= 0 && now - reading.at <= BRIGHTNESS_FRESH_MS
+}
+
 function parseBrightness(code, text) {
   var raw = String(text || "").trim()
   var value = Number(raw)
@@ -308,6 +316,7 @@ if (typeof module !== "undefined") {
     isLayoutEvent: isLayoutEvent,
     nextBrightnessJob: nextBrightnessJob,
     parseBrightness: parseBrightness,
+    brightnessFresh: brightnessFresh,
     viewStops: viewStops
   }
 }
