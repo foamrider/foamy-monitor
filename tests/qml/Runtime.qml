@@ -106,6 +106,18 @@ ShellRoot {
       eq(shell.service.transaction.draft[1].x, 4000, "a draft written elsewhere arrives through the file watch")
       check(shell.service.statusRuns > shell.runsBefore, "the file watch ran status with every popup closed")
       eq(shell.service.changeCount, 1, "one unsaved change")
+      // The helper replaces the file atomically; the watch must survive that.
+      external.payload = JSON.stringify({ id: shell.service.transaction.draft[1].id, changes: { x: 4100 } })
+      external.running = true
+      stepTwoB.start()
+    }
+  }
+
+  Timer {
+    id: stepTwoB
+    interval: 1500
+    onTriggered: {
+      eq(shell.service.transaction.draft[1].x, 4100, "a second write arrives too (watch survives the atomic replace)")
       shell.runsBefore = shell.service.statusRuns
       shell.service.hyprlandEvents.onRawEvent({ name: "focusedmon" })
       shell.service.hyprlandEvents.onRawEvent({ name: "workspacev2" })
