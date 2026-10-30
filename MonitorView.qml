@@ -343,7 +343,8 @@ PanelKeyCatcher {
     anchors.fill: parent
     visible: !view.editing
 
-    FoamyHeader {
+    // The foamy hero band, title row only: tabs, fields and sliders stay in the body.
+    FoamyHeroBand {
       id: header
       width: parent.width
       iconName: "monitor"
@@ -360,7 +361,7 @@ PanelKeyCatcher {
       id: tabBar
       anchors.top: header.bottom
       width: parent.width
-      height: FoamyStyle.controlHeight + FoamyStyle.gap
+      height: FoamyStyle.controlHeight + FoamyStyle.gap * 2
       Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: FoamyPalette.divider }
       Row {
         anchors.left: parent.left
