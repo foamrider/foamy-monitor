@@ -237,8 +237,9 @@ PanelKeyCatcher {
   onTabRequested: function(direction) { host.switchPanel(direction) }
   onTextKey: function(text, modifiers) {
     if (testing) return
-    if (text === "\u0013" || ((modifiers & Qt.ControlModifier) && (text === "s" || text === "S"))) save()
-    else if (text === "s") host.openSettings()
+    if (text === "\u0013" || ((modifiers & Qt.ControlModifier) && (text === "s" || text === "S"))) { save(); return }
+    if (!cursor.plain(modifiers)) return
+    if (text === "s") host.openSettings()
     else if (text === "w" || text === "W") { setTab("Wireless"); place("tab:Wireless") }
     else if (text === "r") { MonitorService.refresh(); refreshBrightness() }
     else if (text === "m" && cursorKey.indexOf("box:") === 0) moving = boxName(stopIndex("box:"))
@@ -902,13 +903,6 @@ PanelKeyCatcher {
       value: field.currentValue
       hasCursor: view.hasCursor(field.stop)
       onHovered: function(isHovered) { if (isHovered) view.hover(field.stop) }
-      // Rebind the draft value when selection closes, including after a revert.
-      Binding {
-        target: dropdown
-        property: "value"
-        value: field.currentValue
-        when: !dropdown.popupOpen
-      }
       onChanged: function(value) { field.changed(value) }
     }
   }

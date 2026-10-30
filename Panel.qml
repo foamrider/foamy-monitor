@@ -18,23 +18,25 @@ Panel {
   readonly property alias popup: popup
   readonly property alias member: member
 
-  property bool editingSettings: false
+  FoamySettingsState { id: settingsState; panel: root }
+  readonly property alias editingSettings: settingsState.editing
   property real wheelAccumulator: 0
   readonly property string screenName: popup.screen ? String(popup.screen.name) : ""
   readonly property string language: FoamyI18n.language
+  // nf-md-monitor_multiple / nf-md-monitor, escaped so tools cannot drop them.
+  readonly property string barGlyph: (MonitorService.activelyCasting || Quickshell.screens.length > 1) ? "\u{f037a}" : "\u{f0379}"
 
   FoamyMember { id: member; scope: "monitor"; demanding: root.opened }
 
-  function openSettings() { editingSettings = true; open() }
-  function closeSettings() { editingSettings = false }
+  function openSettings() { settingsState.show() }
+  function closeSettings() { settingsState.hide() }
 
   onOpenedChanged: {
     if (opened) {
       MonitorService.displayChangesSaved = false
       MonitorService.refresh()
     } else {
-      editingSettings = false
-      // Reuse a finished search across tabs until the popup closes; stop a
+      // Settings resets on close (FoamySettingsState). Reuse a finished search across tabs until the popup closes; stop a
       // running one unless another popup still shows it.
       Qt.callLater(function() { if (!MonitorService.demanded) MonitorService.releaseWireless() })
       Qt.callLater(root.reopenForTrial)
@@ -137,7 +139,7 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: (MonitorService.activelyCasting || Quickshell.screens.length > 1) ? "󰍺" : "󰍹"
+    text: root.barGlyph
     tooltipText: FoamyI18n.t("Displays")
     onPressed: root.toggle()
     onWheelMoved: function(delta) {
