@@ -200,6 +200,45 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
         reassigned = OMARCHY_CONFIG + "omarchy_monitor_scale = 2\n"
         self.assertNotIn("scale = omarchy_monitor_scale,", update_config(reassigned, [moved], [moved], [original]).splitlines()[-1])
 
+    def test_numeric_knob_is_named_only_for_its_own_scale(self):
+        # A runtime-only scale (no rule of its own) that differs from a numeric
+        # knob must be saved as a literal: naming the knob would reload it at
+        # the knob's value and fail the post-save verification (rollback).
+        knob = re.sub(r"(?m)^local omarchy_monitor_scale = .*", "local omarchy_monitor_scale = 2", OMARCHY_CONFIG)
+        original = monitor()                       # scale 1, unchanged by this save
+        moved = dict(original, x=100)
+        added = update_config(knob, [moved], [moved], [original]).splitlines()[-1]
+        self.assertIn("scale = 1,", added)
+        self.assertNotIn("omarchy_monitor_scale", added)
+        # An existing rule naming the knob, with the display at another scale now.
+        existing = knob + 'hl.monitor({ output = "desc:Test DP-1", mode = "1920x1080@60", position = "0x0", scale = omarchy_monitor_scale })\n'
+        rewritten = update_config(existing, [moved], [moved], [original]).splitlines()[-1]
+        self.assertRegex(rewritten, r"scale = 1\s*,")
+        # Equal to the knob's number: keep following it.
+        two = dict(moved, scale=2, width=3840, height=2160, availableModes=["3840x2160@60.00Hz"])
+        self.assertIn("scale = omarchy_monitor_scale", update_config(knob, [two], [two], [dict(two, x=0)]).splitlines()[-1])
+
+    def test_saved_rules_name_no_other_global_or_automatic_values(self):
+        # Audit: the scale knob is the only global a saved rule may name. Mode,
+        # position, transform and mirror are always this display's literal
+        # values (never "preferred"/"auto"/"highres"), and fields the panel does
+        # not manage (vrr, bitdepth, cm, reserved areas) are kept, never added.
+        original = dict(monitor(), transform=1, refreshRate=120.0)
+        moved = dict(original, x=1920, y=40)
+        rule = update_config(OMARCHY_CONFIG, [moved], [moved], [original]).splitlines()[-1]
+        for value in ('"preferred"', '"auto"', '"highres"', '"highrr"', "omarchy_gdk_scale"):
+            self.assertNotIn(value, rule)
+        self.assertIn('mode = "1920x1080@120.00000"', rule)
+        self.assertIn('position = "1920x40"', rule)
+        self.assertIn("transform = 1", rule)
+        for field in ("vrr", "bitdepth", "cm"):
+            self.assertNotIn(field, rule)
+        source = OMARCHY_CONFIG + 'hl.monitor({ output = "desc:Test DP-1", mode = "preferred", position = "auto", scale = 1, vrr = 2, bitdepth = 10, cm = "wide" })\n'
+        kept = update_config(source, [moved], [moved], [original]).splitlines()[-1]
+        self.assertIn("vrr = 2, bitdepth = 10, cm = \"wide\"", kept)
+        self.assertIn('mode = "1920x1080@120.00000"', kept)
+        self.assertIn('position = "1920x40"', kept)
+
     def test_config_rejects_ambiguous_and_dynamic_rules(self):
         for source in ['hl.monitor({ output = output, scale = 1 })',
                        'hl.monitor({ output = "DP-1" })\nhl.monitor({ output = "desc:Test DP-1" })',

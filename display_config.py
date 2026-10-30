@@ -151,8 +151,11 @@ def update_config(source: str, monitors: list[dict[str, Any]], all_monitors: lis
         # Keep a display on Omarchy's scale knob unless this save changes its scale.
         if not has_local:
             return False
-        if local_scale is not None and abs(monitor["scale"] - local_scale) < 0.00001:
-            return True
+        if local_scale is not None:
+            # A numeric knob is only safe to name when it is this display's
+            # scale: a runtime-only scale (no rule of its own) would otherwise
+            # be reloaded as the knob's value and fail the post-save check.
+            return abs(monitor["scale"] - local_scale) < 0.00001
         before = base_by_id.get(monitor["id"])
         unchanged = before is not None and abs(before["scale"] - monitor["scale"]) < 0.00001
         return unchanged and (existing is None or existing.strip() == SCALE_LOCAL)
