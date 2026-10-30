@@ -39,7 +39,13 @@ def write(directory, count=3, brightness=50):
         "hyprctl": LOGGER + '''
 args = sys.argv[1:]
 if args[:1] == ["monitors"]:
-    print(open(os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "monitors.json")).read())
+    # Read the outputs first, then take the configured time to answer: a change
+    # made while this runs is not in its answer (like a real in-flight query).
+    snapshot = open(os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "monitors.json")).read()
+    delay = os.environ["FOAMY_CALLS"] + ".hyprdelay"
+    if os.path.exists(delay):
+        time.sleep(float(open(delay).read() or 0))
+    print(snapshot)
 elif args[:1] == ["configerrors"]:
     pass
 elif args[:1] in (["eval"], ["reload"], ["setcursor"]):

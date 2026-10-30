@@ -46,7 +46,15 @@ Singleton {
   property string statePath: ""
   property string error: ""
   property bool displayChangesSaved: false
-  property bool arrangementDragActive: false
+  // Per-view requests are FoamyShared demand (FoamyMember in MonitorView), not
+  // flags a view sets: a view destroyed mid-drag or with Wireless open (its
+  // monitor unplugged, a bar rebuild, shell reload) drops its demand on
+  // destruction, so nothing stays held for a view that no longer exists.
+  readonly property bool arrangementDragActive: FoamyShared.demandCount("monitor-drag") > 0
+  // A status refresh asked for while a helper command was running: that run
+  // may have read the displays before the change, so run once more after it.
+  property bool statusPending: false
+  property int fileRevision: 0
   property string deferredResult: ""
   property var commands: []
   property int statusRuns: 0
@@ -71,7 +79,11 @@ Singleton {
   // Nothing runs without a panel (preview mocks set the state directly).
   function enqueue(action, payload) {
     if (!active) return
-    if (action === "status" && (commandProc.running || commands.length || arrangementDragActive)) return
+    if (action === "status") {
+      // A queued command reads the displays when it starts, so it covers this request.
+      if (commands.length) return
+      if (commandProc.running || arrangementDragActive) { statusPending = true; return }
+    }
     commands = commands.concat([{ action: action, payload: payload || {} }])
     runNext()
   }
@@ -79,6 +91,8 @@ Singleton {
     if (commandProc.running || !commands.length) return
     var next = commands[0]
     commands = commands.slice(1)
+    // Every command answers with fresh state, read after any earlier request.
+    statusPending = false
     commandProc.action = next.action
     commandProc.payload = next.payload
     commandProc.command = ["python3", bridge, next.action]
@@ -104,14 +118,21 @@ Singleton {
       if (JSON.stringify(gtkScale) !== JSON.stringify(gtk)) gtkScale = gtk
       if (result.statePath && result.statePath !== statePath) statePath = result.statePath
       if (commandProc.action !== "status") error = ""
+      // The file moved past this answer while the command ran: another writer.
+      if (fileRevision > (transaction.revision || 0)) statusSoon()
     } catch (e) {
       error = "Could not read display settings: " + e
     }
   }
-  onArrangementDragActiveChanged: if (!arrangementDragActive && deferredResult) {
+  function flushCommands() {
+    if (commands.length) runNext()
+    else if (statusPending && !arrangementDragActive) enqueue("status")
+  }
+  onArrangementDragActiveChanged: if (!arrangementDragActive) {
     var result = deferredResult
     deferredResult = ""
-    Qt.callLater(function() { root.acceptResult(result) })
+    if (result) Qt.callLater(function() { root.acceptResult(result) })
+    Qt.callLater(root.flushCommands)
   }
 
   property Process commandProc: Process {
@@ -123,7 +144,7 @@ Singleton {
     stderr: StdioCollector { id: commandError; waitForEnd: true }
     onExited: function(code) {
       if (code && commandError.text) root.error = String(commandError.text).trim()
-      Qt.callLater(root.runNext)
+      Qt.callLater(root.flushCommands)
     }
   }
 
@@ -136,8 +157,10 @@ Singleton {
     onFileChanged: reload()
     onLoaded: {
       try {
-        var state = JSON.parse(text())
-        if (state.revision !== root.transaction.revision) root.statusSoon()
+        root.fileRevision = Number(JSON.parse(text()).revision) || 0
+        // While a command runs, its own answer may carry this revision; the
+        // check after it lands (acceptResult) decides whether to read again.
+        if (!root.commandProc.running && root.fileRevision !== root.transaction.revision) root.statusSoon()
       } catch (e) {}
     }
   }
@@ -195,6 +218,11 @@ Singleton {
       delete after[name]
       brightnessAfterRead = after
     }
+    if (_stepRequester[name] !== undefined) {
+      var stepRequesters = Object.assign({}, _stepRequester)
+      delete stepRequesters[name]
+      _stepRequester = stepRequesters
+    }
     var writes = Object.assign({}, brightnessWrites)
     writes[name] = value
     brightnessWrites = writes
@@ -216,9 +244,11 @@ Singleton {
     // Changes that arrive before the read lands combine (Model.mergeBrightnessChange).
     after[name] = Model.mergeBrightnessChange(after[name], change)
     brightnessAfterRead = after
-    var requesters = Object.assign({}, _stepRequester)
-    requesters[name] = requester || null
-    _stepRequester = requesters
+    if (requester) {
+      var requesters = Object.assign({}, _stepRequester)
+      requesters[name] = requester
+      _stepRequester = requesters
+    }
     readBrightness(name)
     return 0
   }
@@ -256,8 +286,13 @@ Singleton {
           var after = Object.assign({}, root.brightnessAfterRead)
           delete after[job.name]
           root.brightnessAfterRead = after
+          // Take the requester first: the write below clears it with the queue.
+          var requester = root._stepRequester[job.name] || null
+          var requesters = Object.assign({}, root._stepRequester)
+          delete requesters[job.name]
+          root._stepRequester = requesters
           var percent = root.changeBrightness(job.name, change, null)
-          root.brightnessStepped(root._stepRequester[job.name] || null, job.name, percent)
+          root.brightnessStepped(requester, job.name, percent)
         }
       }
       Qt.callLater(root.pumpBrightness)
@@ -313,7 +348,11 @@ Singleton {
   property bool castExpectedStop: false
   property bool wirelessScanExpectedStop: false
   // The tab that wants scanning (an open popup on the Wireless tab).
-  property bool wirelessWanted: false
+  readonly property bool wirelessWanted: FoamyShared.demandCount("monitor-wireless") > 0
+  onWirelessWantedChanged: if (wirelessWanted) checkWireless(false)
+  // The last open popup closed (or its bar went away): forget the search and
+  // stop a scan nobody watches. A cast keeps running.
+  onDemandedChanged: if (!demanded) releaseWireless()
   readonly property bool scanRunning: scanProc.running
   readonly property bool scanning: scanProc.running || dependenciesProc.running
   readonly property bool castRunning: castProc.running
@@ -400,7 +439,7 @@ Singleton {
         root.wirelessError = result.error
         root.missingPackages = result.missingPackages || []
         root.wirelessScanState = result.error ? "error" : result.peers.length ? "results" : "empty"
-        root.wirelessCacheValid = root.wirelessWanted
+        root.wirelessCacheValid = root.demanded
       }
     }
     onExited: function(code) {
@@ -413,7 +452,7 @@ Singleton {
       }
       if (root.wirelessScanState === "scanning") {
         root.wirelessScanState = "error"
-        root.wirelessCacheValid = root.wirelessWanted
+        root.wirelessCacheValid = root.demanded
         root.wirelessError = "Wireless display scan failed"
       }
     }
@@ -448,11 +487,12 @@ Singleton {
     active = false
     statusDebounce.stop()
     commands = []
+    statusPending = false
+    _stepRequester = ({})
     brightnessReads = []
     brightnessWrites = ({})
     brightnessAfterRead = ({})
     identifyVisible = false
-    wirelessWanted = false
     if (castProc.running) { castExpectedStop = true; castProc.signal(15) }
     if (scanProc.running) { wirelessScanExpectedStop = true; scanProc.signal(15) }
   }

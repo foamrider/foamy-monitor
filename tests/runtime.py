@@ -64,7 +64,8 @@ def run(host, lang):
     (home / ".config/hypr/monitors.lua").write_text(CONFIG)
     fake = fakebin.write(r.base / "bin", count=3)
     calls = r.base / "calls.log"
-    r.env.update(FOAMY_LANG=lang, FOAMY_HOLD_MS="500", PATH=f"{fake}:/usr/bin", FOAMY_CALLS=str(calls))
+    r.env.update(FOAMY_LANG=lang, FOAMY_HOLD_MS="500", PATH=f"{fake}:/usr/bin", FOAMY_CALLS=str(calls),
+                 FOAMY_FAKEBIN=str(fake))
     log_path = r.base / "qs.log"
     process = subprocess.Popen(["qs", "-p", str(r.root), "--no-color"], env=r.env, stdout=log_path.open("w"),
                                stderr=subprocess.STDOUT, start_new_session=True)

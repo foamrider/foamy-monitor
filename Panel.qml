@@ -36,10 +36,9 @@ Panel {
       MonitorService.displayChangesSaved = false
       MonitorService.refresh()
     } else {
-      // Settings resets on close (FoamySettingsState). Reuse a finished search across tabs until the popup closes; stop a
-      // running one unless another popup still shows it.
-      Qt.callLater(function() { if (!MonitorService.demanded) MonitorService.releaseWireless() })
-      Qt.callLater(root.reopenForTrial)
+      // Settings resets on close (FoamySettingsState); the service forgets the
+      // wireless search once no popup is open (MonitorService.onDemandedChanged).
+      reopenTimer.restart()
     }
   }
 
@@ -57,7 +56,9 @@ Panel {
       if (requester === root && percent > 0) root.showBrightnessOsd(percent)
     }
   }
-  Component.onCompleted: Qt.callLater(reopenForTrial)
+  Component.onCompleted: reopenTimer.restart()
+  // Owned by this bar (Qt.callLater would outlive it on unplug).
+  Timer { id: reopenTimer; interval: 0; onTriggered: root.reopenForTrial() }
 
   // ---- Brightness from the bar ---------------------------------------------
   // The wheel adjusts the display this bar is on; IPC adjusts the focused one.

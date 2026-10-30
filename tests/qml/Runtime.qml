@@ -141,6 +141,48 @@ ShellRoot {
     interval: 900
     onTriggered: {
       eq(shell.service.statusRuns, shell.runsBefore + 1, "output events run one debounced status")
+      // An output change while a status run is in flight (it already read the
+      // outputs): the event's refresh must run after it, not be dropped.
+      shell.runsBefore = shell.service.statusRuns
+      shell.sh("printf 1 > \"$FOAMY_CALLS.hyprdelay\"")
+      inflightA.start()
+    }
+  }
+
+  Timer {
+    id: inflightA
+    interval: 300
+    onTriggered: {
+      shell.service.refresh()
+      eq(shell.service.commandProc.running, true, "a slow status run is in flight")
+      inflightB.start()
+    }
+  }
+  Timer {
+    id: inflightB
+    interval: 300
+    onTriggered: {
+      shell.sh("python3 - <<'PY'\nimport json, os\np = os.path.join(os.environ['FOAMY_FAKEBIN'], 'monitors.json')\nrows = json.load(open(p))\nrows[2]['y'] = 100\njson.dump(rows, open(p, 'w'))\nPY")
+      inflightC.start()
+    }
+  }
+  Timer {
+    id: inflightC
+    interval: 300
+    onTriggered: {
+      eq(shell.service.commandProc.running, true, "still in flight when the event arrives")
+      shell.service.hyprlandEvents.onRawEvent({ name: "monitoraddedv2" })
+      inflightD.start()
+    }
+  }
+  Timer {
+    id: inflightD
+    interval: 3500
+    onTriggered: {
+      eq(shell.service.liveMonitors[2].y, 100, "the change made during the run arrives")
+      eq(shell.service.statusRuns, shell.runsBefore + 2, "exactly one follow-up run")
+      eq(shell.service.statusPending, false, "nothing left pending")
+      shell.sh("rm -f \"$FOAMY_CALLS.hyprdelay\"")
       panel(0).open()
       stepFive.start()
     }
@@ -257,21 +299,81 @@ ShellRoot {
       eq(shell.service.changeBrightness("eDP-1", { delta: 5 }, null), 0, "a step on a stale reading waits for a read")
       eq(shell.service.changeBrightness("eDP-1", { value: 40 }, null), 40, "an explicit level is written at once")
       eq(shell.service.brightnessAfterRead["eDP-1"], undefined, "and supersedes the waiting step")
-      // A scan that is still running when the plugin goes away.
-      shell.service.wirelessWanted = true
-      shell.service.startWirelessScan()
-      stepSeven.start()
+      lifeA.start()
     }
   }
 
+  // ---- Per-view demand: popup close, a bar removed (unplug), hot-plug grace ----
   Timer {
-    id: stepSeven
+    id: lifeA
     interval: 1200
     onTriggered: {
-      eq(shell.service.scanRunning, true, "scan started")
       eq(shell.service.brightness["DP-1"].percent, 45, "40 then +5 lands on 45, not the hardware level + 5")
       eq(shell.service.brightness["eDP-1"].percent, 40, "the explicit level stays after the read lands")
       eq(shell.service.brightnessAfterRead["eDP-1"], undefined, "no stale step left behind")
+      eq(Object.keys(shell.service._stepRequester).length, 0, "no requester kept after its step")
+      // Popup close: Wireless demand and the search go with it.
+      panel(0).open()
+      panel(0).popup.bodyItem.setTab("Wireless")
+      eq(shell.service.wirelessWanted, true, "Wireless shown: wanted")
+      panel(0).close()
+      eq(shell.service.wirelessWanted, false, "popup closed: Wireless released")
+      eq(shell.service.demanded, false, "popup closed: no demand")
+      // A bar with Wireless open and a drag in progress goes away (its monitor unplugged).
+      panel(2).open()
+      var view = panel(2).popup.bodyItem
+      view.setTab("Wireless")
+      view.dragging = true
+      eq(shell.service.wirelessWanted, true, "the unplugged bar wanted Wireless")
+      eq(shell.service.arrangementDragActive, true, "and was dragging")
+      shell.panelCount = 2
+      lifeB.start()
+    }
+  }
+  Timer {
+    id: lifeB
+    interval: 1500
+    onTriggered: {
+      eq(shell.service.members, 2, "two bars left")
+      eq(shell.service.wirelessWanted, false, "a destroyed view releases Wireless")
+      eq(shell.service.arrangementDragActive, false, "a destroyed view releases its drag")
+      eq(shell.service.demanded, false, "a destroyed open popup releases its demand")
+      eq(shell.service.scanning, false, "no scan or dependency check for a view that is gone")
+      eq(shell.service.dependencyRetry.running, false, "no dependency retries")
+      eq(shell.service.teardowns, 0, "other bars keep the service")
+      shell.runsBefore = shell.service.statusRuns
+      shell.service.refresh()
+      lifeC.start()
+    }
+  }
+  Timer {
+    id: lifeC
+    interval: 1000
+    onTriggered: {
+      eq(shell.service.statusRuns, shell.runsBefore + 1, "status runs again after the dragging view is gone")
+      // Hot-plug: every bar rebuilt within the grace period keeps the service and a scan.
+      shell.service.startWirelessScan()
+      shell.panelCount = 0
+      lifeD.start()
+    }
+  }
+  Timer {
+    id: lifeD
+    interval: 800
+    onTriggered: {
+      shell.panelCount = 3
+      lifeE.start()
+    }
+  }
+  Timer {
+    id: lifeE
+    interval: 3500
+    onTriggered: {
+      eq(shell.service.members, 3, "bars rebuilt")
+      eq(shell.service.teardowns, 0, "a rebuild within the grace period does not tear down")
+      eq(shell.service.active, true, "service still active")
+      eq(shell.service.scanRunning, true, "the scan survives the rebuild")
+      eq(shell.leaders(), 1, "one leader after the rebuild")
       shell.panelCount = 0
       stepEight.start()
     }
@@ -285,8 +387,16 @@ ShellRoot {
       eq(shell.service.teardowns, 1, "teardown after the last panel left")
       eq(shell.service.active, false, "service idle")
       eq(shell.service.scanRunning, false, "scan stopped")
+      eq(shell.service.commands.length, 0, "no queued commands after teardown")
+      eq(shell.service.statusPending, false, "no pending refresh after teardown")
       shell.finish()
     }
+  }
+
+  function sh(script) {
+    var p = Qt.createQmlObject('import Quickshell.Io; Process {}', shell)
+    p.command = ["sh", "-c", script]
+    p.running = true
   }
 
   property int holdMs: Number(Quickshell.env("FOAMY_HOLD_MS") || 0)

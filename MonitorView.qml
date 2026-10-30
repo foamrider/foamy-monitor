@@ -64,6 +64,20 @@ PanelKeyCatcher {
 
   FoamyCursor { id: cursor; count: view.stops.length }
 
+  // Deferred work owned by this view: Qt.callLater would still run after the
+  // view is destroyed (its bar removed on unplug); a child Timer dies with it.
+  property var _deferred: []
+  function defer(fn) { _deferred.push(fn); deferTimer.restart() }
+  Timer {
+    id: deferTimer
+    interval: 0
+    onTriggered: {
+      var pending = view._deferred
+      view._deferred = []
+      for (var i = 0; i < pending.length; i++) pending[i]()
+    }
+  }
+
   implicitWidth: FoamyStyle.popupWidthWide
   implicitHeight: editing ? settingsPage.implicitHeight : header.height + tabBar.height + content.implicitHeight + footer.height
   blocked: editing || openDropdowns > 0
@@ -118,7 +132,7 @@ PanelKeyCatcher {
   function marked(field) { return selected && MonitorService.changesFor(selected).indexOf(field) >= 0 }
   function selectMonitor(id) {
     selectedMonitor = id
-    Qt.callLater(refreshBrightness)
+    defer(refreshBrightness)
   }
   function refreshBrightness() { if (brightnessTarget && host.opened) MonitorService.readBrightness(brightnessTarget) }
   function edit(changes, monitor) {
@@ -169,12 +183,12 @@ PanelKeyCatcher {
     if (tabs.indexOf(tab) < 0) return
     activeTab = tab
   }
-  onActiveTabChanged: syncWireless()
-  function syncWireless() {
-    var wanted = host.opened === true && activeTab === "Wireless"
-    MonitorService.wirelessWanted = wanted
-    if (wanted) MonitorService.checkWireless(false)
-  }
+  // Requests this view makes of the shared service, as demand that ends with
+  // the view: Wireless shown (scan + dependency retries) and a drag in
+  // progress (holds status results until the drop).
+  property bool dragging: false
+  FoamyMember { id: wirelessDemand; scope: "monitor-wireless"; demanding: view.host.opened === true && view.activeTab === "Wireless" }
+  FoamyMember { id: dragDemand; scope: "monitor-drag"; demanding: view.dragging }
   function dropdownFor(key) {
     return ({ mode: modeField, resolution: resolutionField, rate: rateField, scale: scaleField, orientation: orientationField,
       textSize: textSizeField, cursorSize: cursorSizeField, gtkScale: gtkScaleField })[key] || null
@@ -244,10 +258,10 @@ PanelKeyCatcher {
     else if (text === "r") { MonitorService.refresh(); refreshBrightness() }
     else if (text === "m" && cursorKey.indexOf("box:") === 0) moving = boxName(stopIndex("box:"))
   }
-  onCursorKeyChanged: Qt.callLater(revealCursor)
+  onCursorKeyChanged: defer(revealCursor)
   onTestingChanged: {
     now = Date.now()
-    if (testing) { moving = ""; Qt.callLater(function() { view.place("revert") }) }
+    if (testing) { moving = ""; defer(function() { view.place("revert") }) }
   }
 
   Connections {
@@ -260,10 +274,9 @@ PanelKeyCatcher {
         scroll.contentY = 0
         view.refreshBrightness()
       }
-      view.syncWireless()
     }
     function onEditingSettingsChanged() {
-      if (view.editing) Qt.callLater(function() { settingsPage.resetScroll(); settingsPage.focusBack() })
+      if (view.editing) defer(function() { settingsPage.resetScroll(); settingsPage.focusBack() })
       else view.forceActiveFocus()
     }
   }
@@ -272,16 +285,15 @@ PanelKeyCatcher {
   // fired before this view existed, so apply their effect here.
   Component.onCompleted: {
     ensureSelection()
-    syncWireless()
     refreshBrightness()
-    if (editing) Qt.callLater(function() { settingsPage.resetScroll(); settingsPage.focusBack() })
-    else if (testing) Qt.callLater(function() { view.place("revert") })
+    if (editing) defer(function() { settingsPage.resetScroll(); settingsPage.focusBack() })
+    else if (testing) defer(function() { view.place("revert") })
   }
   // Focus is requested even without a window (offscreen tests); activeFocus follows once shown.
   readonly property bool settingsBackFocused: settingsPage.backTarget ? settingsPage.backTarget.focus : false
   Connections {
     target: MonitorService
-    function onTransactionChanged() { Qt.callLater(view.ensureSelection) }
+    function onTransactionChanged() { view.defer(view.ensureSelection) }
   }
   function ensureSelection() {
     if (selected || !transaction.draft.length) return
@@ -1031,7 +1043,7 @@ PanelKeyCatcher {
         curLogicalY = startLogicalY
         dragging = true
         view.moving = ""
-        MonitorService.arrangementDragActive = true
+        view.dragging = true
       }
       onPositionChanged: function(mouse) {
         if (!dragging) return
@@ -1063,21 +1075,21 @@ PanelKeyCatcher {
       }
       onCanceled: {
         dragging = false
-        MonitorService.arrangementDragActive = false
+        view.dragging = false
         box.dragDeltaX = 0
         box.dragDeltaY = 0
       }
       onReleased: {
         var monitorName = box.info.name
         dragging = false
-        MonitorService.arrangementDragActive = false
+        view.dragging = false
         var resolved = Model.resolveMonitorOverlap({ x: curLogicalX, y: curLogicalY, w: box.info.w, h: box.info.h },
           box.canvas.otherLogicalRects(box.info.name))
         box.canvas.commitDrag(box.info.name, resolved.x, resolved.y)
         box.dragDeltaX = 0
         box.dragDeltaY = 0
         // Selecting rebuilds the diagram's delegates, so wait until release ends.
-        Qt.callLater(function() {
+        view.defer(function() {
           var monitor = view.transaction.draft.find(function(m) { return m.name === monitorName })
           if (monitor) view.selectMonitor(monitor.id)
         })
