@@ -448,7 +448,9 @@ def command(store: Store, action: str, request: dict[str, Any]) -> dict[str, Any
         if state != previous:
             store.write(state)
         return {"ok": True, "state": {k: v for k, v in state.items() if k not in ("configBefore", "configAfter", "snapshot", "gtkEnvironmentBefore")},
-                "live": live, "gtkScale": dict(state["gtkScale"], error=gtk_error)}
+                "live": live, "gtkScale": dict(state["gtkScale"], error=gtk_error),
+                # The shell watches this file instead of polling for trial and draft changes.
+                "statePath": str(store.path)}
 
 
 def main() -> int:

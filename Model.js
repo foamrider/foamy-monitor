@@ -4,113 +4,6 @@ function clampBrightness(value) {
   return Math.max(1, Math.min(100, Math.round(n)))
 }
 
-function normalizeScale(scale) {
-  var n = parseFloat(String(scale || ""))
-  if (!isFinite(n)) return ""
-  return String(Math.round(n * 100) / 100)
-}
-
-function gcd(a, b) {
-  while (b) {
-    var remainder = a % b
-    a = b
-    b = remainder
-  }
-  return a
-}
-
-function cleanScale(scale, width, height) {
-  var requested = Number(scale)
-  var modeWidth = Number(width)
-  var modeHeight = Number(height)
-  if (!isFinite(requested) || !isFinite(modeWidth) || !isFinite(modeHeight)
-      || requested <= 0 || modeWidth <= 0 || modeHeight <= 0) return ""
-
-  var divisor = gcd(Math.round(modeWidth * 120), Math.round(modeHeight * 120))
-  var scaleUnits = Math.round(requested * 120)
-  if (scaleUnits > divisor) scaleUnits = divisor
-  while (divisor % scaleUnits !== 0) scaleUnits++
-  return normalizeScale(scaleUnits / 120)
-}
-
-function matchingScaleIndex(scales, currentScale, width, height) {
-  var current = Number(currentScale)
-  if (!Array.isArray(scales) || !isFinite(current)) return -1
-
-  var bestIndex = -1
-  var bestDistance = Infinity
-  var normalizedCurrent = normalizeScale(current)
-  for (var i = 0; i < scales.length; i++) {
-    if (cleanScale(scales[i], width, height) !== normalizedCurrent) continue
-
-    var distance = Math.abs(Number(scales[i]) - current)
-    if (distance < bestDistance) {
-      bestIndex = i
-      bestDistance = distance
-    }
-  }
-  return bestIndex
-}
-
-function availableScales(scales, width, height) {
-  if (!Array.isArray(scales) || Number(width) <= 0 || Number(height) <= 0) return scales || []
-
-  var byEffectiveScale = {}
-  for (var i = 0; i < scales.length; i++) {
-    var requested = Number(scales[i])
-    var effective = Number(cleanScale(requested, width, height))
-
-    if (!isFinite(requested) || !isFinite(effective)) continue
-
-    var key = normalizeScale(effective)
-    var existing = byEffectiveScale[key]
-    if (!existing || Math.abs(requested - effective) < existing.distance) {
-      byEffectiveScale[key] = {
-        value: String(scales[i]),
-        index: i,
-        distance: Math.abs(requested - effective)
-      }
-    }
-  }
-
-  return Object.keys(byEffectiveScale)
-    .map(function(key) { return byEffectiveScale[key] })
-    .sort(function(a, b) { return a.index - b.index })
-    .map(function(candidate) { return candidate.value })
-}
-
-function brightnessName(percent) {
-  var p = Math.round(percent)
-  if (p >= 95) return "Sun blast"
-  if (p >= 80) return "Solar flare"
-  if (p >= 65) return "Golden hour"
-  if (p >= 45) return "Even day"
-  if (p >= 30) return "Soft glow"
-  if (p >= 20) return "Lamp light"
-  if (p >= 10) return "Candlelit"
-  return "Night owl"
-}
-
-function parseDisplays(raw) {
-  var displays = []
-  try {
-    displays = raw ? JSON.parse(String(raw)) : []
-  } catch (e) {
-    displays = []
-  }
-  if (!Array.isArray(displays)) displays = []
-
-  var count = 0
-  for (var i = 0; i < displays.length; i++) {
-    if (displays[i] && displays[i].enabled) count++
-  }
-
-  return {
-    displays: displays,
-    enabledDisplayCount: count
-  }
-}
-
 // Laptop panels report a connector name in this family; their EDID make/model
 // (e.g. "BOE 0x07DB") is a raw panel part number, never worth showing.
 function isInternalConnector(name) {
@@ -149,64 +42,9 @@ function friendlyMonitorLabel(display) {
   return name || "Unknown display"
 }
 
-function parseMonitorLabels(raw) {
-  var list = []
-  try {
-    list = raw ? JSON.parse(String(raw)) : []
-  } catch (e) {
-    list = []
-  }
-  if (!Array.isArray(list)) list = []
-
-  var map = {}
-  for (var i = 0; i < list.length; i++) {
-    var m = list[i]
-    if (!m || !m.name) continue
-    map[m.name] = friendlyMonitorLabel(m)
-  }
-  return map
-}
-
 // Full per-monitor info (position, mode, transform, ...) from
 // `hyprctl monitors all -j`, plus the friendly label derived above.
 // Returns { list, byName, labels } — list preserves hyprctl's own order.
-function parseMonitorInfo(raw) {
-  var list = []
-  try {
-    list = raw ? JSON.parse(String(raw)) : []
-  } catch (e) {
-    list = []
-  }
-  if (!Array.isArray(list)) list = []
-
-  var byName = {}
-  var labels = {}
-  var out = []
-  for (var i = 0; i < list.length; i++) {
-    var m = list[i]
-    if (!m || !m.name) continue
-    var label = friendlyMonitorLabel(m)
-    var entry = {
-      name: m.name,
-      x: Number(m.x) || 0,
-      y: Number(m.y) || 0,
-      width: Number(m.width) || 0,
-      height: Number(m.height) || 0,
-      refreshRate: Number(m.refreshRate) || 0,
-      scale: Number(m.scale) || 1,
-      transform: Number(m.transform) || 0,
-      disabled: !!m.disabled,
-      focused: !!m.focused,
-      availableModes: Array.isArray(m.availableModes) ? m.availableModes : [],
-      label: label
-    }
-    out.push(entry)
-    byName[entry.name] = entry
-    labels[entry.name] = label
-  }
-  return { list: out, byName: byName, labels: labels }
-}
-
 // "3440x1440@165.00Hz" style tokens -> the distinct refresh rates (as
 // numbers) available at exactly this width/height, highest first.
 function refreshRatesFor(availableModes, width, height) {
@@ -249,14 +87,6 @@ function nearestRate(rates, current) {
 
 // Enabled displays, left-to-right by current x position — the "order" the
 // Arrangement section shows and reorders.
-function orderedEnabledMonitors(monitorList) {
-  var list = Array.isArray(monitorList) ? monitorList : []
-  var enabled = []
-  for (var i = 0; i < list.length; i++) if (list[i] && !list[i].disabled) enabled.push(list[i])
-  enabled.sort(function(a, b) { return a.x - b.x })
-  return enabled
-}
-
 // Strict AABB overlap test: rects that only touch at an edge (a's right ==
 // b's left) do not count as overlapping, so flush/snapped placement is
 // never rejected as a collision.
@@ -305,25 +135,6 @@ function resolveMonitorOverlap(target, others) {
 // Idle-timeout stops, seconds. Mirrors the curated feel of the text-size
 // slider's px stops: a handful of sane, round choices rather than a raw
 // continuous range.
-function nearestStopIndex(stops, seconds) {
-  var best = 0
-  var bestDist = Infinity
-  var n = Number(seconds)
-  for (var i = 0; i < stops.length; i++) {
-    var d = Math.abs(stops[i] - n)
-    if (d < bestDist) { bestDist = d; best = i }
-  }
-  return best
-}
-
-function formatDuration(seconds) {
-  var s = Math.max(0, Math.round(Number(seconds) || 0))
-  if (s < 60) return s + "s"
-  var m = Math.floor(s / 60)
-  var rem = s % 60
-  return rem === 0 ? (m + "m") : (m + "m " + rem + "s")
-}
-
 function parseFluxCastScan(raw) {
   var payload = null
   try {
@@ -417,6 +228,65 @@ function parseFluxCastEvent(raw) {
   return event
 }
 
+// Hyprland events that change which outputs exist or how they are set up.
+// Everything else (focus, workspaces, windows) leaves the display list alone.
+var LAYOUT_EVENTS = ["monitoradded", "monitoraddedv2", "monitorremoved", "monitorremovedv2", "configreloaded"]
+
+function isLayoutEvent(name) {
+  return LAYOUT_EVENTS.indexOf(String(name || "")) !== -1
+}
+
+// The next DDC/backlight job. One job runs at a time for the whole shell, so
+// a getvcp never overlaps a setvcp on any bus. Pending writes (latest value
+// per display) go first once the slider settles; a read for a display with a
+// pending write is dropped, since the written value is what it will read.
+//   writes: { name: percent }, reads: [name], settling: debounce still running
+function nextBrightnessJob(writes, reads, settling) {
+  var names = Object.keys(writes || {})
+  if (names.length && !settling)
+    return { kind: "write", name: names[0], value: clampBrightness(writes[names[0]]) }
+  var queue = reads || []
+  for (var i = 0; i < queue.length; i++) {
+    if (!writes || writes[queue[i]] === undefined)
+      return { kind: "read", name: queue[i] }
+  }
+  return null
+}
+
+function parseBrightness(code, text) {
+  var raw = String(text || "").trim()
+  var value = Number(raw)
+  if (code !== 0 || raw === "" || !isFinite(value)) return { available: false, percent: 0 }
+  return { available: true, percent: clampBrightness(value) }
+}
+
+// Cursor stops for the main view, in reading order. Keys are stable strings
+// so hover and keyboard share one cursor (FoamyCursor index into this list).
+//   tab: "Display" | "Advanced" | "Wireless"; testing: a display trial is running
+function viewStops(tab, testing, counts) {
+  var c = counts || {}
+  var list = []
+  function add(prefix, n) { for (var i = 0; i < (n || 0); i++) list.push(prefix + i) }
+  if (!testing) {
+    list.push("tab:Display", "tab:Advanced", "tab:Wireless")
+    if (tab === "Display") {
+      add("box:", c.boxes)
+      list.push("identify")
+      add("offline:", c.offline)
+      list.push("mode", "power", "resolution", "rate", "scale", "orientation", "brightness")
+    } else if (tab === "Advanced") {
+      list.push("textSize", "cursorSize", "gtkScale")
+    } else {
+      list.push("scan")
+      add("peer:", c.peers)
+    }
+  }
+  if (testing) list.push("revert", "keep")
+  else if (c.changes > 0) list.push("discard", "save")
+  if (!testing) list.push("settings")
+  return list
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     resolutionOptions: resolutionOptions,
@@ -427,24 +297,17 @@ if (typeof module !== "undefined") {
     parseFluxCastScan: parseFluxCastScan,
     parseFluxCastEvent: parseFluxCastEvent,
     clampBrightness: clampBrightness,
-    normalizeScale: normalizeScale,
-    cleanScale: cleanScale,
-    matchingScaleIndex: matchingScaleIndex,
-    availableScales: availableScales,
-    brightnessName: brightnessName,
-    parseDisplays: parseDisplays,
     isInternalConnector: isInternalConnector,
     friendlyMonitorLabel: friendlyMonitorLabel,
-    parseMonitorLabels: parseMonitorLabels,
-    nearestStopIndex: nearestStopIndex,
-    formatDuration: formatDuration,
-    parseMonitorInfo: parseMonitorInfo,
     refreshRatesFor: refreshRatesFor,
     formatHz: formatHz,
     nearestRate: nearestRate,
-    orderedEnabledMonitors: orderedEnabledMonitors,
     rectsOverlap: rectsOverlap,
     pushRectOutOf: pushRectOutOf,
-    resolveMonitorOverlap: resolveMonitorOverlap
+    resolveMonitorOverlap: resolveMonitorOverlap,
+    isLayoutEvent: isLayoutEvent,
+    nextBrightnessJob: nextBrightnessJob,
+    parseBrightness: parseBrightness,
+    viewStops: viewStops
   }
 }

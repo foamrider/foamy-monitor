@@ -53,7 +53,6 @@ assert.deepEqual(Model.refreshRatesFor([
   "1920x1080@144.00Hz", "invalid"
 ], 5120, 2160), [120, 59.94])
 assert.equal(Model.nearestRate([120, 59.94], 119.999), 120)
-assert.deepEqual(Model.parseMonitorInfo("{"), { list: [], byName: {}, labels: {} })
 assert.equal(Model.friendlyMonitorLabel({name: "eDP-1", make: "BOE", model: "0x1234"}), "Built-in display")
 assert.equal(Model.rectsOverlap(0, 0, 100, 100, 100, 0, 100, 100), false)
 const moved = Model.resolveMonitorOverlap({x: 90, y: 0, w: 100, h: 100}, [{x: 0, y: 0, w: 100, h: 100}])
@@ -71,3 +70,30 @@ assert.deepEqual(Model.resolutionOptions(dell).map(v=>v.value),["5120x2160","384
 assert.deepEqual(Model.changedFields(dell,{...dell,scale:1.25,x:100,y:100}),["scale","position"])
 assert.deepEqual(Model.footprint({...dell,transform:1}),{w:1620,h:3840})
 assert.deepEqual(Model.parseFluxCastScan('{"ok":false,"error":"Please install fluxcast-git","missingPackages":["fluxcast-git"]}').missingPackages,["fluxcast-git"])
+
+// Only output-layout events wake the status helper.
+for (const name of ["monitoradded", "monitoraddedv2", "monitorremoved", "monitorremovedv2", "configreloaded"])
+  assert.equal(Model.isLayoutEvent(name), true, name)
+for (const name of ["focusedmon", "workspace", "activewindow", "", undefined])
+  assert.equal(Model.isLayoutEvent(name), false, String(name))
+
+// DDC access is serialised: writes wait for the slider to settle, then go
+// before reads, and a read for a display with a pending write is dropped.
+assert.equal(Model.nextBrightnessJob({}, [], false), null)
+assert.deepEqual(Model.nextBrightnessJob({ "DP-1": 40 }, ["DP-1"], true), null)
+assert.deepEqual(Model.nextBrightnessJob({ "DP-1": 40 }, ["DP-1", "DP-2"], true), { kind: "read", name: "DP-2" })
+assert.deepEqual(Model.nextBrightnessJob({ "DP-1": 140 }, ["DP-2"], false), { kind: "write", name: "DP-1", value: 100 })
+assert.deepEqual(Model.nextBrightnessJob({}, ["DP-2"], false), { kind: "read", name: "DP-2" })
+assert.deepEqual(Model.parseBrightness(0, " 42\n"), { available: true, percent: 42 })
+assert.deepEqual(Model.parseBrightness(0, ""), { available: false, percent: 0 })
+assert.deepEqual(Model.parseBrightness(1, "42"), { available: false, percent: 0 })
+
+// One cursor list per view; the trial footer replaces everything else.
+assert.deepEqual(Model.viewStops("Advanced", false, { changes: 0 }),
+  ["tab:Display", "tab:Advanced", "tab:Wireless", "textSize", "cursorSize", "gtkScale", "settings"])
+assert.deepEqual(Model.viewStops("Display", false, { boxes: 2, offline: 1, changes: 1 }),
+  ["tab:Display", "tab:Advanced", "tab:Wireless", "box:0", "box:1", "identify", "offline:0", "mode", "power",
+    "resolution", "rate", "scale", "orientation", "brightness", "discard", "save", "settings"])
+assert.deepEqual(Model.viewStops("Wireless", false, { peers: 2 }),
+  ["tab:Display", "tab:Advanced", "tab:Wireless", "scan", "peer:0", "peer:1", "settings"])
+assert.deepEqual(Model.viewStops("Display", true, { boxes: 2, changes: 3 }), ["revert", "keep"])
