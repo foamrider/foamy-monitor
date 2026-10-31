@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "foamy.monitor",
   "name": "Foamy Monitor",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "foamrider",
   "description": "Display arrangement, safe configuration trials, and wireless casting",
   "kinds": [

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import os
 import re
@@ -22,6 +23,41 @@ _child: subprocess.Popen[str] | None = None
 _stop_requested = False
 _stop_count = 0
 _mode = ""
+_parent = os.getppid()
+
+PR_SET_PDEATHSIG = 1
+
+
+def set_parent_death_signal(death_signal: int) -> bool:
+    """Ask the kernel to send death_signal when this process's parent dies."""
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        return libc.prctl(PR_SET_PDEATHSIG, int(death_signal), 0, 0, 0) == 0
+    except (OSError, AttributeError):
+        return False
+
+
+def child_setup() -> None:
+    # Runs in the forked FluxCast child before exec. Quickshell kills this
+    # bridge with SIGKILL when its Process object is destroyed (plugin
+    # disabled, shell reloaded), so the bridge cannot forward a stop. The
+    # kernel then sends FluxCast SIGINT, its own P2P/capture cleanup path.
+    set_parent_death_signal(signal.SIGINT)
+    if os.getppid() != _bridge_pid:
+        # The bridge died between fork and prctl: clean up now.
+        os.kill(os.getpid(), signal.SIGINT)
+
+
+_bridge_pid = os.getpid()
+
+
+def signal_group(child: Any, group_signal: int) -> None:
+    # FluxCast runs in its own session, so its helpers (ffmpeg, capture)
+    # share its process group and stop with it.
+    try:
+        os.killpg(child.pid, group_signal)
+    except (OSError, AttributeError, TypeError):
+        child.send_signal(group_signal)
 
 
 def emit(payload: dict[str, Any]) -> None:
@@ -89,7 +125,7 @@ def stop_child(_signum: int, _frame: Any) -> None:
             child.send_signal(signal.SIGINT)
         else:
             # Only escalate after the cleanup path has had time to finish.
-            child.terminate()
+            signal_group(child, signal.SIGTERM)
 
 
 def fluxcast_command() -> str:
@@ -133,6 +169,8 @@ def run_scan(timeout: int) -> int:
             stderr=subprocess.STDOUT,
             text=True,
             env=child_environment(),
+            start_new_session=True,
+            preexec_fn=child_setup,
         )
         output, _ = _child.communicate()
     except FileNotFoundError:
@@ -191,6 +229,8 @@ def run_cast(args: argparse.Namespace) -> int:
             text=True,
             bufsize=1,
             env=child_environment(),
+            start_new_session=True,
+            preexec_fn=child_setup,
         )
         assert _child.stdout is not None
         for raw_line in _child.stdout:
@@ -256,6 +296,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     signal.signal(signal.SIGTERM, stop_child)
     signal.signal(signal.SIGINT, stop_child)
+    # If the shell itself dies, stop FluxCast through the normal path.
+    set_parent_death_signal(signal.SIGTERM)
+    if os.getppid() != _parent:
+        return 0
     args = parse_args()
     if args.command == "check":
         emit(dependency_status())

@@ -73,11 +73,55 @@ def lua_string(value: str) -> str:
     return '"' + ''.join('\\' + c if c in '\\"' else f'\\{ord(c):03d}' if ord(c) < 32 else c for c in value) + '"'
 
 
+INTERNAL = re.compile(r"^(eDP|LVDS|DSI)-")
+SCALE_LOCAL = "omarchy_monitor_scale"
+
+
 def selector(monitor: dict[str, Any]) -> str:
+    """The output a saved rule names.
+
+    External displays are saved by EDID description (stable across docks and
+    ports). Built-in panels keep their connector name: Omarchy's clamshell
+    script (omarchy-hyprland-monitor-clamshell) looks up the internal panel's
+    rule by `output = "<connector>"` to restore its scale and position.
+    """
+    if INTERNAL.match(str(monitor.get("name", ""))):
+        return monitor["name"]
     return monitor["selector"]
 
 
-def rule_fields(monitor: dict[str, Any], persistent: bool = False, monitors: list | None = None) -> dict[str, str]:
+def without_comments(source: str) -> str:
+    """The source with every Lua comment (line and --[[ block ]]) blanked.
+
+    Uses the same tokenizer as the rule parser, so comment markers inside
+    strings stay literal; newlines are kept so line-anchored checks still work.
+    """
+    return "".join(re.sub(r"[^\n]", " ", m.group()) if m.group().startswith("--") else m.group()
+                   for m in TOKEN.finditer(source))
+
+
+def monitor_scale_local(source: str) -> tuple[bool, float | None]:
+    """Whether Omarchy's scale knob drives the catch-all rule, and its number.
+
+    omarchy-hyprland-monitor-scaling persists a scale by rewriting the line
+    `local omarchy_monitor_scale = …`. Rules that name the local keep following
+    it; a literal scale would silently pin that display.
+    """
+    code = without_comments(source)
+    declarations = re.findall(r'(?m)^[ \t]*local[ \t]+' + SCALE_LOCAL + r'[ \t]*=[ \t]*("[^"\n]*"|[0-9.]+)[ \t]*;?[ \t]*$', code)
+    reassigned = re.search(r'(?m)^(?![ \t]*local\b).*\b' + SCALE_LOCAL + r'[ \t]*=(?!=)', code)
+    catch_all = re.search(r'hl\.monitor\(\{[^\n]*output\s*=\s*""[^\n]*\bscale\s*=\s*' + SCALE_LOCAL + r'\b', code)
+    if len(declarations) != 1 or reassigned or not catch_all:
+        return False, None
+    value = declarations[0]
+    try:
+        return True, None if value.startswith('"') else float(value)
+    except ValueError:
+        return False, None
+
+
+def rule_fields(monitor: dict[str, Any], persistent: bool = False, monitors: list | None = None,
+                scale_local: bool = False) -> dict[str, str]:
     mirror = monitor["mirrorOf"]
     if persistent and mirror and monitors:
         target = next((m for m in monitors if m["name"] == mirror), None)
@@ -87,7 +131,7 @@ def rule_fields(monitor: dict[str, Any], persistent: bool = False, monitors: lis
         "output": lua_string(selector(monitor) if persistent else monitor["name"]),
         "mode": lua_string(f'{monitor["width"]}x{monitor["height"]}@{monitor["refreshRate"]:.5f}'),
         "position": lua_string(f'{monitor["x"]}x{monitor["y"]}'),
-        "scale": format(monitor["scale"], ".10g"),
+        "scale": SCALE_LOCAL if scale_local else format(monitor["scale"], ".10g"),
         "transform": str(monitor["transform"]),
         "disabled": "true" if monitor["disabled"] else "false",
         "mirror": lua_string(mirror),
@@ -98,7 +142,24 @@ def monitor_rule(monitor: dict[str, Any]) -> str:
     return "hl.monitor({ " + ", ".join(f"{k} = {v}" for k, v in rule_fields(monitor).items()) + " })"
 
 
-def update_config(source: str, monitors: list[dict[str, Any]], all_monitors: list[dict[str, Any]] | None = None) -> str:
+def update_config(source: str, monitors: list[dict[str, Any]], all_monitors: list[dict[str, Any]] | None = None,
+                  base: list[dict[str, Any]] | None = None) -> str:
+    has_local, local_scale = monitor_scale_local(source)
+    base_by_id = {m["id"]: m for m in base or []}
+
+    def follows_local(monitor: dict[str, Any], existing: str | None) -> bool:
+        # Keep a display on Omarchy's scale knob unless this save changes its scale.
+        if not has_local:
+            return False
+        if local_scale is not None:
+            # A numeric knob is only safe to name when it is this display's
+            # scale: a runtime-only scale (no rule of its own) would otherwise
+            # be reloaded as the knob's value and fail the post-save check.
+            return abs(monitor["scale"] - local_scale) < 0.00001
+        before = base_by_id.get(monitor["id"])
+        unchanged = before is not None and abs(before["scale"] - monitor["scale"]) < 0.00001
+        return unchanged and (existing is None or existing.strip() == SCALE_LOCAL)
+
     tokens = [(m.group(), m.start(), m.end()) for m in TOKEN.finditer(source)
               if not m.group().isspace() and not m.group().startswith("--")]
     if any(t[0] in ("if", "for", "while", "repeat", "function") for t in tokens):
@@ -161,7 +222,8 @@ def update_config(source: str, monitors: list[dict[str, Any]], all_monitors: lis
             prefix = source[source.rfind("\n", 0, tokens[start][1]) + 1:tokens[start][1]]
             if prefix.strip():
                 raise ValueError("Monitor rules must be standalone calls in monitors.lua")
-            values = rule_fields(monitor, True, all_monitors or monitors)
+            existing_scale = source[slice(*fields["scale"])] if "scale" in fields else None
+            values = rule_fields(monitor, True, all_monitors or monitors, follows_local(monitor, existing_scale))
             for key, value in values.items():
                 if key in fields:
                     a, b = fields[key]
@@ -178,7 +240,7 @@ def update_config(source: str, monitors: list[dict[str, Any]], all_monitors: lis
     additions = []
     for monitor in monitors:
         if monitor["id"] not in found:
-            values = rule_fields(monitor, True, all_monitors or monitors)
+            values = rule_fields(monitor, True, all_monitors or monitors, follows_local(monitor, None))
             additions.append("hl.monitor({ " + ", ".join(f"{k} = {v}" for k, v in values.items()) + " })")
     if additions:
         source = source.rstrip() + "\n" + "\n".join(additions) + "\n"

@@ -422,7 +422,7 @@ def command(store: Store, action: str, request: dict[str, Any]) -> dict[str, Any
             if run("hyprctl", "configerrors"):
                 raise ValueError("Fix Hyprland configuration errors before saving")
             token = uuid.uuid4().hex
-            config_after = update_config(config, edited, state["draft"]) if edited else config
+            config_after = update_config(config, edited, state["draft"], state["base"]) if edited else config
             if gtk_changed:
                 config_after = update_gtk_scale(config_after, gtk["value"])
                 state["gtkEnvironmentBefore"] = next((line.split("=", 1)[1]
@@ -448,7 +448,9 @@ def command(store: Store, action: str, request: dict[str, Any]) -> dict[str, Any
         if state != previous:
             store.write(state)
         return {"ok": True, "state": {k: v for k, v in state.items() if k not in ("configBefore", "configAfter", "snapshot", "gtkEnvironmentBefore")},
-                "live": live, "gtkScale": dict(state["gtkScale"], error=gtk_error)}
+                "live": live, "gtkScale": dict(state["gtkScale"], error=gtk_error),
+                # The shell watches this file instead of polling for trial and draft changes.
+                "statePath": str(store.path)}
 
 
 def main() -> int:

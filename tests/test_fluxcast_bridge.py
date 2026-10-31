@@ -4,7 +4,12 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import os
 import signal
+import subprocess
+import sys
+import tempfile
+import time
 import unittest
 from contextlib import redirect_stdout
 from unittest.mock import Mock, patch
@@ -120,14 +125,63 @@ class FluxCastBridgeTest(unittest.TestCase):
                 BRIDGE.stop_child(signal.SIGTERM, None)
                 BRIDGE.stop_child(signal.SIGTERM, None)
 
-            self.assertEqual(child.signals, [signal.SIGINT])
-            self.assertTrue(child.terminated)
+            # The escalation reaches FluxCast's whole process group.
+            self.assertEqual(child.signals, [signal.SIGINT, signal.SIGTERM])
             self.assertTrue(BRIDGE._stop_requested)
         finally:
             BRIDGE._child = None
             BRIDGE._mode = ""
             BRIDGE._stop_count = 0
             BRIDGE._stop_requested = False
+
+
+    def test_fluxcast_stops_when_the_bridge_is_killed(self):
+        # Quickshell destroys a running Process with SIGKILL, which the bridge
+        # cannot handle; FluxCast must still get its cleanup signal (SIGINT).
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            marker = base / "fluxcast.log"
+            fake = base / "fluxcast"
+            fake.write_text("""#!/usr/bin/python3
+import os, signal, sys, time
+log = open(sys.argv[0] + ".log", "a", buffering=1)
+def stop(number, _frame):
+    log.write("signal %d\\n" % number)
+    sys.exit(0)
+signal.signal(signal.SIGINT, stop)
+log.write("started %d %d\\n" % (os.getpid(), os.getpgid(0)))
+print("Connecting to peer", flush=True)
+while True:
+    time.sleep(0.05)
+""")
+            fake.chmod(0o755)
+            (base / "ffmpeg").symlink_to("/usr/bin/true")
+            env = dict(os.environ, FLUXCAST_BIN=str(fake), PATH=f"{base}:/usr/bin")
+            bridge = subprocess.Popen([sys.executable, str(MODULE_PATH), "cast", "--peer", "AA:BB:CC:DD:EE:FF", "--monitor", "DP-1"],
+                                      stdout=subprocess.PIPE, text=True, env=env)
+            try:
+                for _ in range(100):
+                    if marker.exists() and "started" in marker.read_text():
+                        break
+                    time.sleep(0.05)
+                started = marker.read_text().split()
+                self.assertEqual(started[0], "started")
+                self.assertEqual(started[1], started[2], "FluxCast leads its own process group")
+                bridge.kill()
+                bridge.wait(timeout=5)
+                for _ in range(100):
+                    if "signal" in marker.read_text():
+                        break
+                    time.sleep(0.05)
+                self.assertIn("signal %d" % signal.SIGINT, marker.read_text())
+            finally:
+                if bridge.poll() is None:
+                    bridge.kill()
+                bridge.stdout.close()
+                try:
+                    os.killpg(int(started[2]), signal.SIGKILL)
+                except (OSError, NameError, IndexError, ValueError):
+                    pass
 
 
 if __name__ == "__main__":

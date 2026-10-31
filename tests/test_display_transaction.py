@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -134,6 +135,109 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
         self.assertIn('hl.monitor({ output = "", mode = "preferred", scale = 1.25 })', result)
         self.assertIn('-- hl.monitor({ output = "DP-1", scale = 9 })', result)
         self.assertEqual(update_config(result, [changed]), result)
+
+    def test_internal_panel_rules_use_the_connector_clamshell_reads(self):
+        # omarchy-hyprland-monitor-clamshell (4.0.6 and 4.5) finds the internal
+        # panel's scale/position with this sed match on output = "<connector>".
+        def clamshell_value(source, output, key):
+            code = re.sub(r"--.*$", "", source, flags=re.M)
+            for line in code.splitlines():
+                if re.match(r'^\s*hl\.monitor\(\{.*output\s*=\s*"' + re.escape(output) + '"', line):
+                    match = re.match(r'.*[{,;\s]' + key + r'\s*=\s*("[^"]*"|[^,;}\s]+)\s*([,;}].*)?$', line)
+                    if match:
+                        return match[1].strip('"')
+            return ""
+
+        panel = dict(monitor("eDP-1"), scale=1.6, width=2880, height=1800, x=0, y=0,
+                     availableModes=["2880x1800@60.00Hz"])
+        external = dict(monitor("DP-1"), x=1800, y=0)
+        added = update_config(OMARCHY_CONFIG, [panel, external], [panel, external])
+        self.assertIn('output = "eDP-1"', added)
+        self.assertIn('output = "desc:Test DP-1"', added)
+        self.assertEqual(clamshell_value(added, "eDP-1", "scale"), "1.6")
+        self.assertEqual(clamshell_value(added, "eDP-1", "position"), "0x0")
+        # An older save keyed the panel by description; the next save moves it to the connector.
+        legacy = OMARCHY_CONFIG + 'hl.monitor({ output = "desc:Test eDP-1", mode = "2880x1800@60", scale = 2 })\n'
+        moved = update_config(legacy, [panel], [panel, external])
+        self.assertNotIn("desc:Test eDP-1", moved)
+        self.assertEqual(clamshell_value(moved, "eDP-1", "scale"), "1.6")
+        # A mirror of the panel names the connector too.
+        mirrored = update_config(OMARCHY_CONFIG, [dict(external, mirrorOf="eDP-1")], [panel, external])
+        self.assertIn('mirror = "eDP-1"', mirrored)
+
+    def test_saved_rules_keep_following_omarchy_scale_knob(self):
+        # omarchy-hyprland-monitor-scaling persists by rewriting this local.
+        def scaling_script(source, value):
+            return re.sub(r"(?m)^local omarchy_monitor_scale = .*", f"local omarchy_monitor_scale = {value}", source)
+
+        original = monitor()
+        moved = dict(original, x=100)
+        result = update_config(OMARCHY_CONFIG, [moved], [moved], [original])
+        self.assertIn("scale = omarchy_monitor_scale", result.splitlines()[-1])
+        self.assertIn("local omarchy_monitor_scale = 1.6", scaling_script(result, 1.6))
+        self.assertEqual(update_config(result, [moved], [moved], [original]), result)
+        # The same rule keeps the reference on a later save that leaves the scale alone.
+        again = dict(moved, x=200)
+        self.assertIn("scale = omarchy_monitor_scale", update_config(result, [again], [again], [moved]).splitlines()[-1])
+        # Choosing a scale in the panel pins it, unless it is the knob's own number.
+        scaled = dict(moved, scale=1.25)
+        self.assertIn("scale = 1.25", update_config(result, [scaled], [scaled], [moved]))
+        numeric = scaling_script(OMARCHY_CONFIG, 1.25)
+        self.assertIn("scale = omarchy_monitor_scale", update_config(numeric, [scaled], [scaled], [moved]).splitlines()[-1])
+        # Without Omarchy's knob (or with a custom catch-all) the scale stays literal.
+        custom = 'hl.monitor({ output = "", mode = "preferred", scale = 1 })\n'
+        self.assertIn("scale = 1,", update_config(custom, [moved], [moved], [original]))
+        # A knob that only exists inside a comment is no knob (line or block comment).
+        block = "--[[\n" + OMARCHY_CONFIG + "]]\nhl.monitor({ output = \"\", mode = \"preferred\", scale = 1 })\n"
+        self.assertIn("scale = 1,", update_config(block, [moved], [moved], [original]).splitlines()[-1])
+        level = "--[==[ old\n" + OMARCHY_CONFIG + "]==]\nhl.monitor({ output = \"\", scale = 1 })\n"
+        self.assertIn("scale = 1,", update_config(level, [moved], [moved], [original]).splitlines()[-1])
+        commented = "".join("-- " + line + "\n" for line in OMARCHY_CONFIG.splitlines())
+        self.assertIn("scale = 1,", update_config(commented, [moved], [moved], [original]).splitlines()[-1])
+        # Comment markers inside a string are not comments.
+        quoted = OMARCHY_CONFIG.replace('-- Omarchy', 'hl.env("NOTE", "--[[ not a comment") -- Omarchy')
+        self.assertIn("scale = omarchy_monitor_scale", update_config(quoted, [moved], [moved], [original]).splitlines()[-1])
+        reassigned = OMARCHY_CONFIG + "omarchy_monitor_scale = 2\n"
+        self.assertNotIn("scale = omarchy_monitor_scale,", update_config(reassigned, [moved], [moved], [original]).splitlines()[-1])
+
+    def test_numeric_knob_is_named_only_for_its_own_scale(self):
+        # A runtime-only scale (no rule of its own) that differs from a numeric
+        # knob must be saved as a literal: naming the knob would reload it at
+        # the knob's value and fail the post-save verification (rollback).
+        knob = re.sub(r"(?m)^local omarchy_monitor_scale = .*", "local omarchy_monitor_scale = 2", OMARCHY_CONFIG)
+        original = monitor()                       # scale 1, unchanged by this save
+        moved = dict(original, x=100)
+        added = update_config(knob, [moved], [moved], [original]).splitlines()[-1]
+        self.assertIn("scale = 1,", added)
+        self.assertNotIn("omarchy_monitor_scale", added)
+        # An existing rule naming the knob, with the display at another scale now.
+        existing = knob + 'hl.monitor({ output = "desc:Test DP-1", mode = "1920x1080@60", position = "0x0", scale = omarchy_monitor_scale })\n'
+        rewritten = update_config(existing, [moved], [moved], [original]).splitlines()[-1]
+        self.assertRegex(rewritten, r"scale = 1\s*,")
+        # Equal to the knob's number: keep following it.
+        two = dict(moved, scale=2, width=3840, height=2160, availableModes=["3840x2160@60.00Hz"])
+        self.assertIn("scale = omarchy_monitor_scale", update_config(knob, [two], [two], [dict(two, x=0)]).splitlines()[-1])
+
+    def test_saved_rules_name_no_other_global_or_automatic_values(self):
+        # Audit: the scale knob is the only global a saved rule may name. Mode,
+        # position, transform and mirror are always this display's literal
+        # values (never "preferred"/"auto"/"highres"), and fields the panel does
+        # not manage (vrr, bitdepth, cm, reserved areas) are kept, never added.
+        original = dict(monitor(), transform=1, refreshRate=120.0)
+        moved = dict(original, x=1920, y=40)
+        rule = update_config(OMARCHY_CONFIG, [moved], [moved], [original]).splitlines()[-1]
+        for value in ('"preferred"', '"auto"', '"highres"', '"highrr"', "omarchy_gdk_scale"):
+            self.assertNotIn(value, rule)
+        self.assertIn('mode = "1920x1080@120.00000"', rule)
+        self.assertIn('position = "1920x40"', rule)
+        self.assertIn("transform = 1", rule)
+        for field in ("vrr", "bitdepth", "cm"):
+            self.assertNotIn(field, rule)
+        source = OMARCHY_CONFIG + 'hl.monitor({ output = "desc:Test DP-1", mode = "preferred", position = "auto", scale = 1, vrr = 2, bitdepth = 10, cm = "wide" })\n'
+        kept = update_config(source, [moved], [moved], [original]).splitlines()[-1]
+        self.assertIn("vrr = 2, bitdepth = 10, cm = \"wide\"", kept)
+        self.assertIn('mode = "1920x1080@120.00000"', kept)
+        self.assertIn('position = "1920x40"', kept)
 
     def test_config_rejects_ambiguous_and_dynamic_rules(self):
         for source in ['hl.monitor({ output = output, scale = 1 })',
