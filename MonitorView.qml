@@ -595,9 +595,11 @@ PanelKeyCatcher {
               onChanged: function(value) { view.edit({ transform: Number(value) }) }
             }
           }
+          // Bleeds by its inset so the label and slider line up with the fields.
           FoamyCursorSurface {
             id: brightnessRow
-            width: parent.width
+            x: -FoamyStyle.gap
+            width: parent.width + FoamyStyle.gap * 2
             height: brightnessColumn.implicitHeight + FoamyStyle.gap * 2
             hasCursor: view.hasCursor("brightness")
             onHovered: view.hover("brightness")
