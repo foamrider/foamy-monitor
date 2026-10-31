@@ -33,7 +33,11 @@ Optional, for wireless casting: FluxCast (`fluxcast-git`) and FFmpeg
   brightness. **Identify** shows each display's name on it.
 - **Advanced**: text size, cursor size and GTK scale.
 - **Wireless**: find a receiver and cast the selected display. The search runs
-  while the tab is open and stops when the panel closes.
+  while the tab is open and stops when the panel closes; the Scan icon turns
+  while it runs. Receivers it found are remembered for two minutes: reopening
+  the panel shows them at once and refreshes the list in the background
+  (receivers that are gone drop out when the refresh finishes). An older list
+  is dropped and a new search starts.
 - The cog opens Settings, which explains where the language is chosen.
 
 **Save** starts a 15-second trial. Choose **Keep settings** to write
@@ -70,6 +74,8 @@ brightness control).
 - Brightness is read only for an open panel, the scroll wheel or IPC, and one
   `omarchy-brightness-display` call runs at a time, so DDC reads and writes
   never overlap on a bus.
+- The wireless search runs only while an open panel shows the Wireless tab,
+  one search at a time for every bar.
 - FluxCast stops when the plugin is disabled or removed, when the shell
   reloads, and when its helper is killed (it runs with a parent-death signal).
 

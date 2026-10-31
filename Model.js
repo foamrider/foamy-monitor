@@ -168,6 +168,38 @@ function parseFluxCastScan(raw) {
   return { peers: peers, error: "", missingPackages: [] }
 }
 
+// Wireless receivers found by the last finished scan stay in MonitorService
+// (it outlives the popup) for WIRELESS_TTL_MS. Showing the Wireless tab again:
+//   "discard"  nothing cached, or older than the TTL (or the clock went back):
+//              forget it and run a normal scan (the list shows a searching row);
+//   "keep"     finished less than WIRELESS_REFRESH_MIN_MS ago: show it as is;
+//   "refresh"  show it at once and rescan silently (only the Scan button spins).
+var WIRELESS_TTL_MS = 120000
+var WIRELESS_REFRESH_MIN_MS = 10000
+function wirelessCacheFresh(scannedAt, now, ttl) {
+  var limit = ttl === undefined ? WIRELESS_TTL_MS : ttl
+  return scannedAt > 0 && now >= scannedAt && now - scannedAt <= limit
+}
+function wirelessOpenAction(scannedAt, now, ttl, refreshMin) {
+  if (!wirelessCacheFresh(scannedAt, now, ttl)) return "discard"
+  return now - scannedAt < (refreshMin === undefined ? WIRELESS_REFRESH_MIN_MS : refreshMin) ? "keep" : "refresh"
+}
+// A finished scan against the list on screen: receivers found again keep
+// their place (with the fresh name and details), new ones follow in scan
+// order, and ones the scan no longer sees drop out. Peers match by address.
+function mergeWirelessPeers(previous, fresh) {
+  var found = {}
+  ;(fresh || []).forEach(function(peer) { if (peer && peer.address && !found[peer.address]) found[peer.address] = peer })
+  var merged = [], placed = {}
+  ;(previous || []).concat(fresh || []).forEach(function(peer) {
+    var next = peer ? found[peer.address] : null
+    if (!next || placed[next.address]) return
+    placed[next.address] = true
+    merged.push(next)
+  })
+  return merged
+}
+
 function resolutionOptions(monitor) {
   if (!monitor) return []
   var seen = {}, result = []
@@ -312,6 +344,11 @@ if (typeof module !== "undefined") {
     footprint: footprint,
     parseFluxCastScan: parseFluxCastScan,
     parseFluxCastEvent: parseFluxCastEvent,
+    WIRELESS_TTL_MS: WIRELESS_TTL_MS,
+    WIRELESS_REFRESH_MIN_MS: WIRELESS_REFRESH_MIN_MS,
+    wirelessCacheFresh: wirelessCacheFresh,
+    wirelessOpenAction: wirelessOpenAction,
+    mergeWirelessPeers: mergeWirelessPeers,
     clampBrightness: clampBrightness,
     isInternalConnector: isInternalConnector,
     friendlyMonitorLabel: friendlyMonitorLabel,

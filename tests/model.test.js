@@ -114,3 +114,32 @@ assert.deepEqual(Model.mergeBrightnessChange({ value: 40 }, { value: 70 }), { va
 // Applying, saving or reverting: no Settings stop (the change owns the popup).
 assert.deepEqual(Model.viewStops("Advanced", false, { changes: 0, busy: true }),
   ["tab:Display", "tab:Advanced", "tab:Wireless", "textSize", "cursorSize", "gtkScale"])
+
+// Wireless receivers cached in the service: 2-minute TTL, a silent refresh on
+// reopen (not right after a scan), a stale or future-dated scan is discarded.
+assert.equal(Model.WIRELESS_TTL_MS, 120000)
+assert.equal(Model.wirelessCacheFresh(0, 5000), false, "never scanned")
+assert.equal(Model.wirelessCacheFresh(1000, 1000 + 120000), true, "exactly at the TTL")
+assert.equal(Model.wirelessCacheFresh(1000, 1000 + 120001), false, "past the TTL")
+assert.equal(Model.wirelessCacheFresh(5000, 4000), false, "clock went back")
+assert.equal(Model.wirelessOpenAction(0, 5000), "discard")
+assert.equal(Model.wirelessOpenAction(1000, 1000 + 121000), "discard")
+assert.equal(Model.wirelessOpenAction(1000, 1000 + 5000), "keep")
+assert.equal(Model.wirelessOpenAction(1000, 1000 + 10000), "refresh")
+assert.equal(Model.wirelessOpenAction(1000, 1000 + 119000), "refresh")
+assert.equal(Model.wirelessOpenAction(1000, 1000 + 500, 120000, 0), "refresh")
+
+// A finished scan merges into the list on screen: stable order, fresh
+// details, new receivers last, missing ones dropped, duplicates collapsed.
+const tv = { address: "7A:2D:91:40:0B:CE", name: "Living Room TV" }
+const box = { address: "02:11:22:33:44:55", name: "" }
+const den = { address: "0A:0B:0C:0D:0E:0F", name: "Den" }
+assert.deepEqual(Model.mergeWirelessPeers([], [box, tv]), [box, tv])
+assert.deepEqual(Model.mergeWirelessPeers([tv, box], [box, tv]), [tv, box], "order stays as shown")
+assert.deepEqual(Model.mergeWirelessPeers([tv, box], [den, box]), [box, den], "gone dropped, new appended")
+const renamed = { address: box.address, name: "Projector" }
+assert.deepEqual(Model.mergeWirelessPeers([tv, box], [renamed, tv]), [tv, renamed], "fresh details win")
+assert.deepEqual(Model.mergeWirelessPeers([tv], [den, den, tv]), [tv, den], "duplicates collapse")
+assert.deepEqual(Model.mergeWirelessPeers([tv, box], []), [], "an empty scan empties the list")
+assert.deepEqual(Model.mergeWirelessPeers(null, undefined), [])
+console.log("wireless cache tests passed")

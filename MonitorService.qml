@@ -15,8 +15,11 @@ import "Model.js" as Model
 //     every second during a trial (a safety net for the file watch);
 //   - brightness is read only for an open popup, the wheel or IPC, one
 //     DDC/backlight job at a time for the whole shell;
-//   - the FluxCast scan and cast run here once and stop when the last panel
-//     goes away (plugin disabled or removed) or the shell reloads.
+//   - the FluxCast scan runs here, one at a time for every bar, starts only
+//     from an open popup (Wireless tab shown, Scan, IPC) and stops when the
+//     last popup closes; the receivers it found stay cached for two minutes;
+//   - a cast runs here once and stops when the last panel goes away (plugin
+//     disabled or removed) or the shell reloads.
 // Panels join FoamyMember scope "monitor"; an open popup raises demand.
 Singleton {
   id: root
@@ -336,10 +339,18 @@ Singleton {
   property Timer identifyTimer: Timer { interval: 2500; onTriggered: root.identifyVisible = false }
 
   // ---- Wireless displays (FluxCast) ---------------------------------------
+  // The receivers from the last finished scan live here, not in a popup, so a
+  // reopened popup (on any bar) shows them at once. Model.wirelessOpenAction
+  // decides on each show of the Wireless tab: older than the 2-minute TTL is
+  // discarded (a normal scan), otherwise a silent refresh merges into the list.
+  // Nothing scans while every popup is closed, and there is one scan process
+  // for the whole shell, however many bars (4.5 draws one per monitor).
   property var wirelessPeers: []
   property var missingPackages: []
   property string wirelessScanState: "idle"
-  property bool wirelessCacheValid: false
+  // Date.now() of the last scan that finished without an error; 0 = none kept.
+  property real wirelessScannedAt: 0
+  property int wirelessScanRuns: 0
   property string wirelessError: ""
   property string castPhase: "idle"
   property string castDetail: ""
@@ -347,28 +358,46 @@ Singleton {
   property string castMonitor: ""
   property bool castExpectedStop: false
   property bool wirelessScanExpectedStop: false
+  // A receiver picked during a refresh: the scan stops first, then it casts.
+  property var pendingCast: null
+  // preview/Preview.qml only: the scanning look without a FluxCast process.
+  property bool previewScanning: false
   // The tab that wants scanning (an open popup on the Wireless tab).
   readonly property bool wirelessWanted: FoamyShared.demandCount("monitor-wireless") > 0
-  onWirelessWantedChanged: if (wirelessWanted) checkWireless(false)
-  // The last open popup closed (or its bar went away): forget the search and
-  // stop a scan nobody watches. A cast keeps running.
+  onWirelessWantedChanged: if (wirelessWanted) showWireless()
+  // The last open popup closed (or its bar went away): stop a scan nobody
+  // watches. The list stays cached; a cast keeps running.
   onDemandedChanged: if (!demanded) releaseWireless()
   readonly property bool scanRunning: scanProc.running
-  readonly property bool scanning: scanProc.running || dependenciesProc.running
+  readonly property bool scanning: scanProc.running || dependenciesProc.running || previewScanning
+  // A scan with receivers on screen updates them in place: no searching row.
+  readonly property bool wirelessRefreshing: scanning && wirelessPeers.length > 0
   readonly property bool castRunning: castProc.running
   readonly property bool activelyCasting: castRunning && castPhase === "casting"
 
-  function checkWireless(force) {
-    if (!active || dependenciesProc.running || scanProc.running || castProc.running || (wirelessCacheValid && !force)) return
+  function wirelessOpenAction() { return Model.wirelessOpenAction(wirelessScannedAt, Date.now()) }
+  function forgetWireless() {
+    wirelessPeers = []
+    wirelessScannedAt = 0
+    if (wirelessScanState === "results" || wirelessScanState === "empty") wirelessScanState = "idle"
+  }
+  // The Wireless tab came into view in an open popup.
+  function showWireless() {
+    var action = wirelessOpenAction()
+    if (action === "discard") forgetWireless()
+    if (action !== "keep" || missingPackages.length) checkWireless()
+  }
+  // A dependency check, then a scan (Scan button, IPC, the tab shown).
+  function checkWireless() {
+    if (!active || dependenciesProc.running || scanProc.running || castProc.running) return
     dependenciesProc.running = true
   }
   function startWirelessScan() {
     if (!active || scanProc.running || castProc.running || missingPackages.length) return
     wirelessScanExpectedStop = false
-    wirelessCacheValid = false
-    wirelessPeers = []
     wirelessError = ""
     wirelessScanState = "scanning"
+    wirelessScanRuns++
     scanProc.command = ["python3", fluxCastBridge, "scan", "--timeout", "8"]
     scanProc.running = true
   }
@@ -378,8 +407,15 @@ Singleton {
     scanProc.signal(15)
   }
   function connectWirelessPeer(peer, label, monitor) {
-    if (!active || !peer || scanProc.running || castProc.running || missingPackages.length) return
+    if (!active || !peer || castProc.running || missingPackages.length) return
     if (!monitor) { wirelessError = "No enabled display"; return }
+    // Discovery and casting share the Wi-Fi Direct device: stop the refresh first.
+    if (scanProc.running || dependenciesProc.running) {
+      pendingCast = { peer: peer, label: label, monitor: monitor }
+      cancelWirelessScan()
+      return
+    }
+    pendingCast = null
     castTargetName = label
     castMonitor = monitor
     castExpectedStop = false
@@ -389,6 +425,14 @@ Singleton {
     castProc.command = ["python3", fluxCastBridge, "cast", "--peer", peer.address, "--monitor", monitor,
       "--output-res", "1920x1080", "--fps", "30", "--bitrate", "4M", "--timeout", "8"]
     castProc.running = true
+  }
+  // Returns true when a picked receiver was waiting and its cast started.
+  function startPendingCast() {
+    var pending = pendingCast
+    if (!pending) return false
+    pendingCast = null
+    connectWirelessPeer(pending.peer, pending.label, pending.monitor)
+    return true
   }
   function stopCast() {
     if (!castProc.running || castExpectedStop) return
@@ -404,10 +448,25 @@ Singleton {
     castDetail = String(event.detail || "")
     if (castPhase === "error") wirelessError = castDetail
   }
-  // A popup closed: forget the search and stop a scan nobody watches.
+  // A popup closed: stop a scan nobody watches (the found list stays cached).
   function releaseWireless() {
-    wirelessCacheValid = false
     cancelWirelessScan()
+  }
+  function acceptWirelessScan(text) {
+    var result = Model.parseFluxCastScan(text)
+    missingPackages = result.missingPackages || []
+    if (result.error) {
+      // A failed refresh keeps the list it had; missing FluxCast empties it.
+      if (missingPackages.length) forgetWireless()
+      wirelessError = result.error
+      wirelessScanState = missingPackages.length ? "missing" : "error"
+      return
+    }
+    var merged = Model.mergeWirelessPeers(wirelessPeers, result.peers)
+    if (JSON.stringify(merged) !== JSON.stringify(wirelessPeers)) wirelessPeers = merged
+    wirelessScannedAt = Date.now()
+    wirelessError = ""
+    wirelessScanState = merged.length ? "results" : "empty"
   }
 
   property Process dependenciesProc: Process {
@@ -418,8 +477,9 @@ Singleton {
         var result = Model.parseFluxCastScan(text)
         root.missingPackages = result.missingPackages || []
         root.wirelessError = result.error
-        if (root.missingPackages.length) root.wirelessScanState = "missing"
-        else if (!result.error && root.wirelessWanted) root.startWirelessScan()
+        if (root.missingPackages.length) { root.forgetWireless(); root.wirelessScanState = "missing" }
+        if (root.startPendingCast()) return
+        if (!result.error && root.wirelessWanted) root.startWirelessScan()
       }
     }
   }
@@ -427,32 +487,24 @@ Singleton {
     interval: 10000
     repeat: true
     running: root.wirelessWanted && root.missingPackages.length > 0
-    onTriggered: root.checkWireless(true)
+    onTriggered: root.checkWireless()
   }
   property Process scanProc: Process {
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: {
-        if (root.wirelessScanExpectedStop) return
-        var result = Model.parseFluxCastScan(text)
-        root.wirelessPeers = result.peers
-        root.wirelessError = result.error
-        root.missingPackages = result.missingPackages || []
-        root.wirelessScanState = result.error ? "error" : result.peers.length ? "results" : "empty"
-        root.wirelessCacheValid = root.demanded
-      }
+      onStreamFinished: if (!root.wirelessScanExpectedStop) root.acceptWirelessScan(text)
     }
     onExited: function(code) {
       if (root.wirelessScanExpectedStop) {
         root.wirelessScanExpectedStop = false
-        root.wirelessScanState = "idle"
+        root.wirelessScanState = !root.wirelessScannedAt ? "idle" : root.wirelessPeers.length ? "results" : "empty"
+        if (root.startPendingCast()) return
         // A quick reopen may have happened before the old process stopped.
-        if (root.wirelessWanted) Qt.callLater(root.checkWireless)
+        if (root.wirelessWanted && root.wirelessOpenAction() !== "keep") Qt.callLater(root.checkWireless)
         return
       }
       if (root.wirelessScanState === "scanning") {
         root.wirelessScanState = "error"
-        root.wirelessCacheValid = root.demanded
         root.wirelessError = "Wireless display scan failed"
       }
     }
@@ -494,6 +546,7 @@ Singleton {
     brightnessAfterRead = ({})
     identifyVisible = false
     if (castProc.running) { castExpectedStop = true; castProc.signal(15) }
+    pendingCast = null
     if (scanProc.running) { wirelessScanExpectedStop = true; scanProc.signal(15) }
   }
   Component.onDestruction: teardown()

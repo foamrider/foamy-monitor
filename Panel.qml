@@ -42,8 +42,9 @@ Panel {
       MonitorService.displayChangesSaved = false
       MonitorService.refresh()
     } else {
-      // Settings resets on close (FoamySettingsState); the service forgets the
-      // wireless search once no popup is open (MonitorService.onDemandedChanged).
+      // Settings resets on close (FoamySettingsState); the service stops a
+      // wireless search once no popup is open and keeps what it found
+      // (MonitorService.onDemandedChanged).
       reopenTimer.restart()
     }
   }
@@ -123,7 +124,7 @@ Panel {
     open()
     var view = popup.ensureBody()
     if (view) view.setTab("Wireless")
-    MonitorService.checkWireless(true)
+    MonitorService.checkWireless()
   }
 
   FoamyIpc {
