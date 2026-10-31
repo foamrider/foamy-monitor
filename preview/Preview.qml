@@ -9,7 +9,7 @@ Item {
   id: preview
   required property QtObject bar
   required property Item anchorItem
-  property var previewStates: ["display", "trial", "advanced", "wireless", "wireless-missing", "loading", "settings"]
+  property var previewStates: ["display", "trial", "advanced", "wireless", "wireless-scanning", "wireless-refreshing", "wireless-missing", "loading", "settings"]
   property string previewState: "display"
   property int settleMs: 700
   readonly property Item popup: popup
@@ -52,8 +52,14 @@ Item {
     service.gtkScale = { base: 2, value: 2, error: "" }
     service.brightness = { "eDP-1": { available: true, percent: 64 } }
     service.cursorSize = 24
-    service.wirelessPeers = state === "wireless" ? [{ address: "7A:2D:91:40:0B:CE", name: "Living Room TV" }, { address: "02:11:22:33:44:55", name: "" }] : []
-    service.wirelessScanState = state === "wireless" ? "results" : state === "wireless-missing" ? "missing" : "idle"
+    // wireless-scanning: a first scan (searching row); wireless-refreshing: the
+    // cached list on reopen while it refreshes (only the Scan glyph turns).
+    var listed = state === "wireless" || state === "wireless-refreshing"
+    service.wirelessPeers = listed ? [{ address: "7A:2D:91:40:0B:CE", name: "Living Room TV" }, { address: "02:11:22:33:44:55", name: "" }] : []
+    // A recent scan, so showing the tab keeps the list (the TTL would discard it).
+    service.wirelessScannedAt = listed ? Date.now() - 30000 : 0
+    service.previewScanning = state === "wireless-scanning" || state === "wireless-refreshing"
+    service.wirelessScanState = service.previewScanning ? "scanning" : state === "wireless" ? "results" : state === "wireless-missing" ? "missing" : "idle"
     service.missingPackages = state === "wireless-missing" ? ["fluxcast-git"] : []
     service.wirelessError = state === "wireless-missing" ? "Please install fluxcast-git" : ""
     var view = popup.bodyItem
@@ -63,6 +69,7 @@ Item {
     view.now = Date.now()
     if (state === "display") view.place("resolution")
     else if (state === "wireless") view.place("peer:0")
+    else if (state === "wireless-scanning" || state === "wireless-refreshing") view.place("scan")
     else if (state === "trial") view.place("revert")
     else view.place("")
   }

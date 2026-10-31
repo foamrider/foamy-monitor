@@ -51,9 +51,12 @@ PanelKeyCatcher {
   readonly property var gtkScale: MonitorService.gtkScale
 
   readonly property var tabs: ["Display", "Advanced", "Wireless"]
+  // Any scan turns the Scan glyph; only one with an empty list adds the searching row.
+  readonly property bool scanSpinning: MonitorService.scanning && !MonitorService.castRunning
+  readonly property bool scanIndicatorShown: scanSpinning && !MonitorService.wirelessRefreshing
   readonly property var stops: Model.viewStops(activeTab, testing, {
     boxes: enabledMonitorInfos.length, offline: offlineMonitors.length,
-    peers: MonitorService.castRunning || MonitorService.scanRunning ? 0 : MonitorService.wirelessPeers.length,
+    peers: MonitorService.castRunning ? 0 : MonitorService.wirelessPeers.length,
     changes: busy ? 0 : changeCount, busy: busy
   })
   readonly property string cursorKey: cursor.index >= 0 && cursor.index < stops.length ? stops[cursor.index] : ""
@@ -173,7 +176,7 @@ PanelKeyCatcher {
   function decide(action) { MonitorService.enqueue(action, { token: transaction.token }) }
   function scanOrStop() {
     if (MonitorService.castRunning) MonitorService.stopCast()
-    else MonitorService.checkWireless(true)
+    else MonitorService.checkWireless()
   }
   function connectPeer(peer) {
     var monitor = selectedLive && !selectedLive.disabled ? selectedLive.name : MonitorService.focusedMonitor
@@ -694,12 +697,16 @@ PanelKeyCatcher {
           RowLayout {
             width: parent.width
             Label { text: view.tr("Wireless displays"); Layout.fillWidth: true }
-            Button {
+            // The refresh glyph turns for every scan, the silent refresh of a
+            // cached list included (the list itself stays put meanwhile).
+            FoamyAction {
               id: scanButton
-              text: view.tr(MonitorService.castRunning ? "Stop" : "Scan")
-              enabled: MonitorService.castRunning ? !MonitorService.castExpectedStop : !MonitorService.scanning
+              iconName: MonitorService.castRunning ? "x" : "refresh-cw"
+              label: view.tr(MonitorService.castRunning ? "Stop" : "Scan")
+              spinning: view.scanSpinning
+              actionEnabled: MonitorService.castRunning ? !MonitorService.castExpectedStop : !MonitorService.scanning
               hasCursor: view.hasCursor("scan")
-              onHovered: function(hovered) { if (hovered) view.hover("scan") }
+              onHoveredChanged: if (hovered) view.hover("scan")
               onClicked: view.scanOrStop()
             }
           }
@@ -712,14 +719,52 @@ PanelKeyCatcher {
             visible: text !== ""
             text: MonitorService.castRunning ? view.wirelessPhaseLabel()
               : MonitorService.wirelessError ? view.tr(MonitorService.wirelessError)
-              : MonitorService.scanning ? view.tr("Scanning…")
-              : MonitorService.wirelessScanState === "idle" || MonitorService.wirelessPeers.length ? "" : view.tr("No receivers found")
+              : MonitorService.scanning || MonitorService.wirelessScanState === "idle" || MonitorService.wirelessPeers.length ? ""
+              : view.tr("No receivers found")
             color: MonitorService.wirelessError && !MonitorService.castRunning ? Commons.Color.urgent : FoamyPalette.mutedText
             small: true
           }
+          // A scan with nothing to show yet: a searching row where the list
+          // will appear. The icon breathes unless motion is reduced.
+          Item {
+            id: scanIndicator
+            width: parent.width
+            height: FoamyStyle.rowHeight
+            visible: view.scanIndicatorShown
+            Accessible.role: Accessible.StaticText
+            Accessible.name: scanIndicatorText.text
+            RowLayout {
+              anchors.fill: parent
+              anchors.leftMargin: FoamyStyle.rowPadding
+              anchors.rightMargin: FoamyStyle.rowPadding
+              spacing: FoamyStyle.rowPadding
+              FoamyIcon {
+                id: scanIndicatorIcon
+                name: "airplay"
+                color: FoamyPalette.mutedText
+                Layout.preferredWidth: FoamyStyle.iconSize
+                Layout.preferredHeight: FoamyStyle.iconSize
+                SequentialAnimation on opacity {
+                  running: FoamyMotion.loopAllowed(scanIndicator.visible && view.host.opened === true)
+                  loops: Animation.Infinite
+                  NumberAnimation { from: 1; to: 0.3; duration: FoamyMotion.pulse / 2; easing.type: Easing.InOutSine }
+                  NumberAnimation { from: 0.3; to: 1; duration: FoamyMotion.pulse / 2; easing.type: Easing.InOutSine }
+                  onStopped: scanIndicatorIcon.opacity = 1
+                }
+              }
+              Label {
+                id: scanIndicatorText
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+                text: view.tr("Looking for wireless displays…")
+                color: FoamyPalette.mutedText
+              }
+            }
+          }
           Repeater {
             id: peerRepeater
-            model: !MonitorService.castRunning && !MonitorService.scanRunning ? MonitorService.wirelessPeers : []
+            // Cached receivers stay listed (and usable) through a refresh.
+            model: !MonitorService.castRunning ? MonitorService.wirelessPeers : []
             FoamyCursorSurface {
               id: peerRow
               required property var modelData
