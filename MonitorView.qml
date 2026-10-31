@@ -403,6 +403,9 @@ PanelKeyCatcher {
       interactive: !MonitorService.arrangementDragActive
       onContentHeightChanged: contentY = Math.max(0, Math.min(contentY, contentHeight - height))
       QQC.ScrollBar.vertical: QQC.ScrollBar { policy: scroll.contentHeight > scroll.height ? QQC.ScrollBar.AsNeeded : QQC.ScrollBar.AlwaysOff }
+      // A wheel notch scrolls about three rows, however the mouse splits it;
+      // off while a display box is being dragged.
+      FoamyWheelScroll { target: scroll; enabled: scroll.interactive }
 
       Column {
         id: content
