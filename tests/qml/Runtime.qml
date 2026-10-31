@@ -435,6 +435,196 @@ ShellRoot {
       shell.leaderPanel().openSettings()
       eq(shell.leaderPanel().editingSettings, true, "Settings opens again once the change is done")
       shell.leaderPanel().close()
+      wifiA.start()
+    }
+  }
+
+  // ---- Wireless receivers cached in the service (2-minute TTL) ----
+  // The fake FluxCast lists $FOAMY_CALLS.peers after $FOAMY_CALLS.scandelay s.
+  property int scansBefore: 0
+  function addresses() { return shell.service.wirelessPeers.map(function(p) { return p.address }).join(",") }
+  Timer {
+    id: wifiA
+    interval: 300
+    onTriggered: {
+      eq(shell.service.scanning, false, "no scan left over before the cache checks")
+      shell.service.wirelessPeers = []
+      shell.service.wirelessScannedAt = 0
+      shell.scansBefore = shell.service.wirelessScanRuns
+      shell.sh("printf '[1] 7A:2D:91:40:0B:CE Living Room TV via NetworkManager\\n[2] 02:11:22:33:44:55 via NetworkManager\\n' > \"$FOAMY_CALLS.peers\"; printf 1.2 > \"$FOAMY_CALLS.scandelay\"")
+      wifiB.start()
+    }
+  }
+  Timer {
+    id: wifiB
+    interval: 500
+    onTriggered: {
+      panel(0).open()
+      panel(0).popup.bodyItem.setTab("Wireless")
+      wifiB2.start()
+    }
+  }
+  // Process.running notifies once the process has started: check a moment later.
+  Timer {
+    id: wifiB2
+    interval: 150
+    onTriggered: {
+      var view = panel(0).popup.bodyItem
+      eq(shell.service.scanning, true, "showing Wireless with nothing cached starts a scan")
+      eq(view.scanSpinning, true, "the Scan glyph spins during the first scan")
+      eq(view.itemFor("scan").spinning, true, "FoamyAction spinning is set")
+      eq(view.itemFor("scan").actionEnabled, false, "Scan is inert while it runs")
+      eq(view.scanIndicatorShown, true, "an empty list shows the searching row")
+      wifiC.start()
+    }
+  }
+  Timer {
+    id: wifiC
+    interval: 700
+    onTriggered: {
+      eq(shell.service.scanRunning, true, "the scan runs")
+      eq(shell.service.wirelessScanRuns, shell.scansBefore + 1, "one scan process")
+      // Every bar shares the service: more requests while it runs start nothing.
+      shell.service.checkWireless()
+      shell.service.startWirelessScan()
+      eq(shell.service.wirelessScanRuns, shell.scansBefore + 1, "still one scan for every bar")
+      wifiD.start()
+    }
+  }
+  Timer {
+    id: wifiD
+    interval: 1650
+    onTriggered: {
+      var view = panel(0).popup.bodyItem
+      eq(shell.addresses(), "7A:2D:91:40:0B:CE,02:11:22:33:44:55", "the scan lists both receivers")
+      eq(shell.service.wirelessScanState, "results", "results state")
+      check(shell.service.wirelessScannedAt > 0, "the finished scan is timestamped")
+      eq(view.scanSpinning, false, "the glyph stops with the scan")
+      eq(view.scanIndicatorShown, false, "no searching row with results")
+      view.place("peer:1")
+      check(view.itemFor("peer:1") !== null, "both receivers are listed")
+      panel(0).close()
+      eq(shell.service.demanded, false, "popup closed")
+      eq(shell.service.wirelessPeers.length, 2, "closing the popup keeps the receivers in the service")
+      // Next scan: one receiver gone, one renamed, one new (listed first).
+      shell.sh("printf '[1] 0A:0B:0C:0D:0E:0F Den via NetworkManager\\n[2] 02:11:22:33:44:55 Projector via NetworkManager\\n' > \"$FOAMY_CALLS.peers\"; printf 1.5 > \"$FOAMY_CALLS.scandelay\"")
+      // Old enough for a refresh on reopen, well inside the TTL.
+      shell.service.wirelessScannedAt -= 30000
+      wifiE.start()
+    }
+  }
+  Timer {
+    id: wifiE
+    interval: 1500
+    onTriggered: {
+      eq(shell.service.wirelessScanRuns, shell.scansBefore + 1, "nothing scans while every popup is closed")
+      eq(shell.service.scanning, false, "no scan or check while closed")
+      // Reopen on another bar: the cached list at once, refreshed silently.
+      panel(1).open()
+      var view = panel(1).popup.bodyItem
+      view.setTab("Wireless")
+      eq(shell.addresses(), "7A:2D:91:40:0B:CE,02:11:22:33:44:55", "the reopened popup shows the cached list at once")
+      view.place("peer:1")
+      check(view.itemFor("peer:1") !== null, "cached receivers are listed")
+      wifiE2.start()
+    }
+  }
+  Timer {
+    id: wifiE2
+    interval: 150
+    onTriggered: {
+      var view = panel(1).popup.bodyItem
+      eq(shell.service.scanning, true, "and refreshes it")
+      eq(shell.service.wirelessRefreshing, true, "silently")
+      eq(view.scanSpinning, true, "only the Scan glyph spins")
+      eq(view.scanIndicatorShown, false, "no searching row over a cached list")
+      check(view.stops.indexOf("peer:1") > 0, "cached receivers keep cursor stops during the refresh")
+      wifiF.start()
+    }
+  }
+  Timer {
+    id: wifiF
+    interval: 550
+    onTriggered: {
+      eq(shell.service.wirelessScanRuns, shell.scansBefore + 2, "one refresh")
+      eq(shell.addresses(), "7A:2D:91:40:0B:CE,02:11:22:33:44:55", "the list holds still while it refreshes")
+      wifiG.start()
+    }
+  }
+  Timer {
+    id: wifiG
+    interval: 1800
+    onTriggered: {
+      var view = panel(1).popup.bodyItem
+      eq(shell.addresses(), "02:11:22:33:44:55,0A:0B:0C:0D:0E:0F", "merged: kept order, gone dropped, new appended")
+      eq(shell.service.wirelessPeers[0].name, "Projector", "fresh details replace cached ones")
+      eq(view.scanSpinning, false, "refresh done")
+      // A reopen right after a scan does not scan again.
+      panel(1).close()
+      panel(1).open()
+      eq(shell.service.scanning, false, "no rescan right after a finished scan")
+      eq(shell.service.wirelessPeers.length, 2, "the list is still there")
+      // Past the TTL the cached list is discarded on open: a normal scan.
+      panel(1).close()
+      shell.service.wirelessScannedAt = Date.now() - 121000
+      panel(1).open()
+      eq(shell.service.wirelessPeers.length, 0, "a list older than the TTL is discarded on open")
+      eq(shell.service.wirelessScannedAt, 0, "and its timestamp with it")
+      wifiG2.start()
+    }
+  }
+  Timer {
+    id: wifiG2
+    interval: 150
+    onTriggered: {
+      eq(panel(1).popup.bodyItem.scanIndicatorShown, true, "the searching row shows for the new scan")
+      wifiH.start()
+    }
+  }
+  Timer {
+    id: wifiH
+    interval: 2350
+    onTriggered: {
+      var view = panel(1).popup.bodyItem
+      eq(shell.service.wirelessPeers.length, 2, "the new scan lists the receivers")
+      // Picking a receiver during a refresh stops the scan, then casts.
+      shell.sh("printf 5 > \"$FOAMY_CALLS.scandelay\"")
+      shell.service.wirelessScannedAt -= 30000
+      wifiI.start()
+    }
+  }
+  Timer {
+    id: wifiI
+    interval: 300
+    onTriggered: {
+      var view = panel(1).popup.bodyItem
+      view.scanOrStop()
+      wifiJ.start()
+    }
+  }
+  Timer {
+    id: wifiJ
+    interval: 600
+    onTriggered: {
+      var view = panel(1).popup.bodyItem
+      eq(shell.service.scanRunning, true, "a refresh runs")
+      eq(shell.service.wirelessPeers.length, 2, "the Scan button keeps the list too")
+      view.connectPeer(shell.service.wirelessPeers[0])
+      check(shell.service.pendingCast !== null, "the pick waits for the scan to stop")
+      wifiK.start()
+    }
+  }
+  Timer {
+    id: wifiK
+    interval: 1200
+    onTriggered: {
+      eq(shell.service.scanRunning, false, "the refresh was stopped")
+      eq(shell.service.pendingCast, null, "the pick was taken")
+      check(shell.service.castPhase !== "idle", "the cast started after the scan: " + shell.service.castPhase)
+      eq(shell.service.wirelessPeers.length, 2, "a stopped refresh keeps the list")
+      shell.service.stopCast()
+      panel(1).close()
+      shell.sh("rm -f \"$FOAMY_CALLS.peers\" \"$FOAMY_CALLS.scandelay\"")
       shell.panelCount = 0
       stepEight.start()
     }

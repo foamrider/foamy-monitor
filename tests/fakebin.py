@@ -68,6 +68,9 @@ print(open(level).read().strip() if os.path.exists(level) else "%d" % BRIGHTNESS
         "gsettings": LOGGER + 'print("24" if "cursor-size" in sys.argv else "\'Adwaita\'")\n',
         "omarchy-display-text-size": LOGGER,
         # FluxCast double: a scan that runs until stopped, logging the signal.
+        # With $FOAMY_CALLS.peers present a scan instead finishes after
+        # $FOAMY_CALLS.scandelay seconds (default 0.8) and prints those peers
+        # (FluxCast's "[n] MAC name via source" lines).
         "fluxcast": LOGGER + '''
 import signal
 def stop(number, _frame):
@@ -76,6 +79,12 @@ def stop(number, _frame):
     sys.exit(0)
 signal.signal(signal.SIGINT, stop)
 signal.signal(signal.SIGTERM, stop)
+peers = os.environ["FOAMY_CALLS"] + ".peers"
+if "--wfd-scan" in sys.argv and os.path.exists(peers):
+    delay = os.environ["FOAMY_CALLS"] + ".scandelay"
+    time.sleep(float(open(delay).read()) if os.path.exists(delay) else 0.8)
+    print(open(peers).read(), flush=True)
+    sys.exit(0)
 time.sleep(30)
 ''',
         "python3": '''#!/bin/sh
