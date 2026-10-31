@@ -38,7 +38,8 @@ Optional, for wireless casting: FluxCast (`fluxcast-git`) and FFmpeg
   the panel shows them at once and refreshes the list in the background
   (receivers that are gone drop out when the refresh finishes). An older list
   is dropped and a new search starts.
-- The cog opens Settings, which explains where the language is chosen.
+- There are no plugin settings: the language follows Omarchy → Setup →
+  Language.
 
 **Save** starts a 15-second trial. Choose **Keep settings** to write
 `~/.config/hypr/monitors.lua`, or **Revert** (or Esc) to restore the previous
@@ -50,14 +51,14 @@ unplugged. Brightness, text size and cursor size apply immediately.
 One cursor, shared with the pointer: arrows or `j`/`k` move it, `h`/`l` switch
 tabs and step the brightness, Enter activates (and opens a dropdown), `m` on a
 display in the diagram moves it with the arrow keys (10 px per press; Enter or
-Esc to drop), `w` opens Wireless, `s` Settings, `r` refreshes, Ctrl+S saves.
+Esc to drop), `w` opens Wireless, `r` refreshes, Ctrl+S saves.
 Tab and Shift+Tab move to the next bar panel. Esc reverts a running trial,
 otherwise closes the panel.
 
 ### IPC
 
 `omarchy-shell foamy.monitor <command>` (4.5) or `qs ipc call foamy.monitor
-<command>`: `open`, `close`, `toggle`, `settings`, `scanWireless`,
+<command>`: `open`, `close`, `toggle`, `scanWireless`,
 `stopWireless`, `status` (JSON), and `brightness <percent>` for the focused
 display (`40`, `+5` or `-5`; it answers with an error when the display has no
 brightness control).

@@ -9,7 +9,7 @@ Item {
   id: preview
   required property QtObject bar
   required property Item anchorItem
-  property var previewStates: ["display", "trial", "advanced", "wireless", "wireless-scanning", "wireless-refreshing", "wireless-missing", "loading", "settings"]
+  property var previewStates: ["display", "trial", "advanced", "wireless", "wireless-scanning", "wireless-refreshing", "wireless-missing", "loading"]
   property string previewState: "display"
   property int settleMs: 700
   readonly property Item popup: popup
@@ -32,17 +32,14 @@ Item {
     id: mockHost
     property QtObject bar: preview.bar
     readonly property bool opened: true
-    readonly property bool editingSettings: preview.previewState === "settings"
     function close() {}
-    function openSettings() {}
-    function closeSettings() {}
     function switchPanel(direction) { return false }
   }
 
   function apply() {
     var state = previewState
     var draft = live.map(function(m) { return Object.assign({}, m) })
-    if (state === "display" || state === "settings") { draft[1].x = 1900; draft[1].scale = 2 }
+    if (state === "display") { draft[1].x = 1900; draft[1].scale = 2 }
     var loading = state === "loading"
     service.transaction = loading ? { phase: "idle", base: [], draft: [] } : {
       phase: state === "trial" ? "testing" : "idle", base: live, draft: state === "trial" ? live : draft,

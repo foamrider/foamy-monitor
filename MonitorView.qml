@@ -9,22 +9,21 @@ import qs.Ui as Ui
 import "kit"
 import "Model.js" as Model
 
-// The popup body: header, Display / Advanced / Wireless tabs, the trial
-// footer and the settings page. Shared data comes from MonitorService; the
-// host (Panel.qml, or a mock in preview/Preview.qml) provides `bar`,
-// `opened`, `editingSettings`, close(), openSettings(), closeSettings() and
-// switchPanel(direction).
+// The popup body: header, Display / Advanced / Wireless tabs and the trial
+// footer. Shared data comes from MonitorService; the host (Panel.qml, or a
+// mock in preview/Preview.qml) provides `bar`, `opened`, close() and
+// switchPanel(direction). The plugin has no settings, so no Settings page.
 //
 // Keyboard (one cursor, hover moves it too): j/k or arrows walk the stops,
 // h/l switch tabs and step brightness, Enter activates (opens a dropdown),
 // m moves the display under the cursor with the arrows (Enter/Esc to drop),
-// w opens Wireless, s Settings, r refreshes, Ctrl+S saves, Tab/Shift+Tab go
+// w opens Wireless, r refreshes, Ctrl+S saves, Tab/Shift+Tab go
 // to the next bar panel, Esc reverts a running trial or closes.
 PanelKeyCatcher {
   id: view
 
   required property var host
-  readonly property bool editing: host.editingSettings === true
+  readonly property alias band: header
 
   property string selectedMonitor: ""
   property string activeTab: "Display"
@@ -57,7 +56,7 @@ PanelKeyCatcher {
   readonly property var stops: Model.viewStops(activeTab, testing, {
     boxes: enabledMonitorInfos.length, offline: offlineMonitors.length,
     peers: MonitorService.castRunning ? 0 : MonitorService.wirelessPeers.length,
-    changes: busy ? 0 : changeCount, busy: busy
+    changes: busy ? 0 : changeCount
   })
   readonly property string cursorKey: cursor.index >= 0 && cursor.index < stops.length ? stops[cursor.index] : ""
   function hasCursor(key) { return cursorKey === key }
@@ -82,8 +81,8 @@ PanelKeyCatcher {
   }
 
   implicitWidth: FoamyStyle.popupWidthWide
-  implicitHeight: editing ? settingsPage.implicitHeight : header.height + tabBar.height + content.implicitHeight + footer.height
-  blocked: editing || openDropdowns > 0
+  implicitHeight: header.height + tabBar.height + content.implicitHeight + footer.height
+  blocked: openDropdowns > 0
 
   // ---- Strings ------------------------------------------------------------
   function tr(text, values) {
@@ -212,7 +211,6 @@ PanelKeyCatcher {
     else if (key === "save") save()
     else if (key === "revert") decide("revert")
     else if (key === "keep") decide("keep")
-    else if (key === "settings") host.openSettings()
   }
   function stepBrightness(direction) {
     if (brightnessAvailable) MonitorService.setBrightness(brightnessTarget, brightnessPercent + direction * 5)
@@ -256,8 +254,7 @@ PanelKeyCatcher {
     if (busy) return
     if (text === "\u0013" || ((modifiers & Qt.ControlModifier) && (text === "s" || text === "S"))) { save(); return }
     if (!cursor.plain(modifiers)) return
-    if (text === "s") host.openSettings()
-    else if (text === "w" || text === "W") { setTab("Wireless"); place("tab:Wireless") }
+    if (text === "w" || text === "W") { setTab("Wireless"); place("tab:Wireless") }
     else if (text === "r") { MonitorService.refresh(); refreshBrightness() }
     else if (text === "m" && cursorKey.indexOf("box:") === 0) moving = boxName(stopIndex("box:"))
   }
@@ -280,23 +277,16 @@ PanelKeyCatcher {
         if (view.testing) view.defer(function() { view.place("revert") })
       }
     }
-    function onEditingSettingsChanged() {
-      if (view.editing) defer(function() { settingsPage.resetScroll(); settingsPage.focusBack() })
-      else view.forceActiveFocus()
-    }
   }
-  // The body is built lazily on the first open, which can already be into
-  // Settings (IPC `settings`) or a running trial: the change handlers above
-  // fired before this view existed, so apply their effect here.
+  // The body is built lazily on the first open, which can already be into a
+  // running trial: the change handlers above fired before this view existed,
+  // so apply their effect here.
   Component.onCompleted: {
     ensureSelection()
     refreshBrightness()
-    if (editing) defer(function() { settingsPage.resetScroll(); settingsPage.focusBack() })
-    else if (testing) defer(function() { view.place("revert") })
+    if (testing) defer(function() { view.place("revert") })
   }
-  // Focus is requested even without a window (offscreen tests); activeFocus follows once shown.
-  readonly property bool footerShown: footer.shown && !editing
-  readonly property bool settingsBackFocused: settingsPage.backTarget ? settingsPage.backTarget.focus : false
+  readonly property bool footerShown: footer.shown
   Connections {
     target: MonitorService
     function onTransactionChanged() { view.defer(view.ensureSelection) }
@@ -319,7 +309,7 @@ PanelKeyCatcher {
   Timer {
     interval: 5000
     repeat: true
-    running: view.host.opened === true && !view.editing
+    running: view.host.opened === true
     onTriggered: view.refreshBrightness()
   }
 
@@ -347,7 +337,6 @@ PanelKeyCatcher {
   Item {
     id: main
     anchors.fill: parent
-    visible: !view.editing
 
     // The foamy hero band, title row only: tabs, fields and sliders stay in the body.
     FoamyHeroBand {
@@ -357,10 +346,7 @@ PanelKeyCatcher {
       title: view.tr("Displays")
       meta: MonitorService.activelyCasting ? view.tr("Casting to %1", MonitorService.castTargetName)
         : view.transaction.draft.length ? FoamyI18n.tn("%1 displays on", view.activeCount) : ""
-      showSettings: !view.busy
-      settingsHasCursor: view.hasCursor("settings")
-      onSettingsClicked: view.host.openSettings()
-      onSettingsHovered: function(hovered) { if (hovered) view.hover("settings") }
+      showSettings: false     // nothing to set: Omarchy owns the language
     }
 
     Item {
@@ -871,38 +857,6 @@ PanelKeyCatcher {
             color: FoamyPalette.text
           }
         }
-      }
-    }
-  }
-
-  // ---- Settings -----------------------------------------------------------
-  FoamySettingsPage {
-    id: settingsPage
-    visible: view.editing
-    width: parent.width
-    height: parent.height
-    onBack: view.host.closeSettings()
-    FoamySettingsSection {
-      width: parent.width
-      title: view.tr("Language")
-      Label {
-        width: parent.width
-        text: view.tr("Language follows Omarchy → Setup → Language.")
-        color: FoamyPalette.secondaryText
-        small: true
-        wrapMode: Text.WordWrap
-      }
-    }
-    FoamySettingsSection {
-      width: parent.width
-      visible: view.changeCount > 0
-      title: view.tr("Displays")
-      Label {
-        width: parent.width
-        text: view.tr("Pending display changes are preserved.")
-        color: FoamyPalette.secondaryText
-        small: true
-        wrapMode: Text.WordWrap
       }
     }
   }

@@ -240,16 +240,15 @@ ShellRoot {
       eq(view.LayoutMirroring.enabled, shell.lang === "ar", "popup body mirrors in RTL only")
       eq(FoamyI18n.tn("%1 unsaved changes", 1), shell.lang === "no" ? "1 ulagret endring" : "1 unsaved change", "plural")
       eq(FoamyI18n.t("Settings"), shell.lang === "no" ? "Innstillinger" : "Settings", "settings title translated")
+      // No settings: no Settings button, no Settings stop, `s` does nothing.
+      eq(view.band.settingsButton.visible, false, "no Settings button")
+      eq(view.stops.indexOf("settings"), -1, "no Settings stop")
       shell.key(view, "s")
-      eq(first.editingSettings, true, "s opens Settings")
-      eq(view.blocked, true, "settings page owns the keys")
-      first.closeSettings()
-      eq(view.blocked, false, "back from Settings")
+      eq(view.blocked, false, "s opens nothing")
       view.closeRequested()
       eq(first.opened, false, "Esc closes")
-      // IPC `settings` as the first action: the lazy body is built straight
-      // into Settings and Back must own the keys.
-      panel(1).openSettings()
+      // IPC `open` as the first action builds the lazy body.
+      panel(1).open()
       // Brightness from three bars at once: one DDC job at a time.
       for (var i = 0; i < 3; i++) shell.service.changeBrightness(shell.service.liveMonitors[i].name, { delta: 5 }, panel(i))
       eq(first.brightnessIpc("abc"), "error: expected a percentage such as 40, +5 or -5", "IPC rejects junk")
@@ -268,8 +267,7 @@ ShellRoot {
         "the wheel shows the Omarchy OSD: " + JSON.stringify(mockBar.summoned))
       eq(shell.service.brightnessProc.running, false, "brightness queue drained")
       var second = panel(1).popup.bodyItem
-      check(second !== null && second.editing, "settings opened on a fresh panel")
-      check(second !== null && second.settingsBackFocused, "Back has focus when Settings is the first view")
+      check(second !== null, "the body builds on a fresh panel")
       panel(1).close()
       // The level changed elsewhere (laptop keys, the monitor's buttons) while
       // every popup was closed: a wheel step after the burst re-reads first.
@@ -387,8 +385,7 @@ ShellRoot {
       eq(shell.service.scanRunning, true, "the scan survives the rebuild")
       eq(shell.leaders(), 1, "one leader after the rebuild")
       // ---- A running trial against every UI state ----
-      shell.leaderPanel().openSettings()
-      eq(shell.leaderPanel().editingSettings, true, "Settings open before the trial")
+      shell.leaderPanel().open()
       // The trial worker's phase change, written to the helper's state file.
       shell.setPhase("testing")
       trialA.start()
@@ -399,10 +396,7 @@ ShellRoot {
     interval: 1000
     onTriggered: {
       eq(shell.service.testing, true, "the trial arrives through the state file")
-      eq(shell.leaderPanel().editingSettings, false, "a starting trial closes Settings")
-      shell.leaderPanel().openSettings()
-      eq(shell.leaderPanel().editingSettings, false, "Settings (IPC or key) cannot cover a running trial")
-      eq(shell.leaderPanel().opened, true, "it shows the trial instead")
+      eq(shell.leaderPanel().opened, true, "the popup shows the trial")
       eq(shell.openCount(), 1, "one popup shows the trial")
       var view = shell.leaderPanel().popup.bodyItem
       eq(JSON.stringify(view.stops), JSON.stringify(["revert", "keep"]), "only Revert and Keep take the cursor")
@@ -410,8 +404,6 @@ ShellRoot {
       check(view.footerShown, "the trial footer shows on Advanced")
       view.setTab("Wireless")
       check(view.footerShown, "and on Wireless")
-      shell.key(view, "s")
-      eq(shell.leaderPanel().editingSettings, false, "s does nothing during a trial")
       shell.leaderPanel().close()
       trialB.start()
     }
@@ -432,8 +424,6 @@ ShellRoot {
     interval: 1500
     onTriggered: {
       eq(shell.service.testing, false, "trial over")
-      shell.leaderPanel().openSettings()
-      eq(shell.leaderPanel().editingSettings, true, "Settings opens again once the change is done")
       shell.leaderPanel().close()
       wifiA.start()
     }

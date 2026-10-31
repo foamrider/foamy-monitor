@@ -90,12 +90,12 @@ assert.deepEqual(Model.parseBrightness(1, "42"), { available: false, percent: 0 
 
 // One cursor list per view; the trial footer replaces everything else.
 assert.deepEqual(Model.viewStops("Advanced", false, { changes: 0 }),
-  ["tab:Display", "tab:Advanced", "tab:Wireless", "textSize", "cursorSize", "gtkScale", "settings"])
+  ["tab:Display", "tab:Advanced", "tab:Wireless", "textSize", "cursorSize", "gtkScale"])
 assert.deepEqual(Model.viewStops("Display", false, { boxes: 2, offline: 1, changes: 1 }),
   ["tab:Display", "tab:Advanced", "tab:Wireless", "box:0", "box:1", "identify", "offline:0", "mode", "power",
-    "resolution", "rate", "scale", "orientation", "brightness", "discard", "save", "settings"])
+    "resolution", "rate", "scale", "orientation", "brightness", "discard", "save"])
 assert.deepEqual(Model.viewStops("Wireless", false, { peers: 2 }),
-  ["tab:Display", "tab:Advanced", "tab:Wireless", "scan", "peer:0", "peer:1", "settings"])
+  ["tab:Display", "tab:Advanced", "tab:Wireless", "scan", "peer:0", "peer:1"])
 assert.deepEqual(Model.viewStops("Display", true, { boxes: 2, changes: 3 }), ["revert", "keep"])
 
 // A cached brightness is reused only within a wheel burst.
@@ -111,8 +111,8 @@ assert.deepEqual(Model.mergeBrightnessChange({ value: 40 }, { delta: 5 }), { val
 assert.deepEqual(Model.mergeBrightnessChange({ delta: 5 }, { value: 40 }), { value: 40 })
 assert.deepEqual(Model.mergeBrightnessChange({ value: 40 }, { value: 70 }), { value: 70 })
 
-// Applying, saving or reverting: no Settings stop (the change owns the popup).
-assert.deepEqual(Model.viewStops("Advanced", false, { changes: 0, busy: true }),
+// No Settings stop: the plugin has no settings (and no Settings button).
+assert.deepEqual(Model.viewStops("Advanced", false, { changes: 0 }),
   ["tab:Display", "tab:Advanced", "tab:Wireless", "textSize", "cursorSize", "gtkScale"])
 
 // Wireless receivers cached in the service: 2-minute TTL, a silent refresh on

@@ -18,8 +18,6 @@ Panel {
   readonly property alias popup: popup
   readonly property alias member: member
 
-  FoamySettingsState { id: settingsState; panel: root }
-  readonly property alias editingSettings: settingsState.editing
   property real wheelAccumulator: 0
   readonly property string screenName: popup.screen ? String(popup.screen.name) : ""
   readonly property string language: FoamyI18n.language
@@ -28,23 +26,13 @@ Panel {
 
   FoamyMember { id: member; scope: "monitor"; demanding: root.opened }
 
-  // A display change in progress (applying, the 15 s trial, saving,
-  // reverting) owns the popup: Settings would cover Keep/Revert and the
-  // countdown, so it opens the main view instead and closes if a trial starts.
-  function openSettings() {
-    if (MonitorService.busy) { open(); return }
-    settingsState.show()
-  }
-  function closeSettings() { settingsState.hide() }
-
   onOpenedChanged: {
     if (opened) {
       MonitorService.displayChangesSaved = false
       MonitorService.refresh()
     } else {
-      // Settings resets on close (FoamySettingsState); the service stops a
-      // wireless search once no popup is open and keeps what it found
-      // (MonitorService.onDemandedChanged).
+      // The service stops a wireless search once no popup is open and keeps
+      // what it found (MonitorService.onDemandedChanged).
       reopenTimer.restart()
     }
   }
@@ -67,7 +55,6 @@ Panel {
   Connections {
     target: MonitorService
     function onTestingChanged() { root.reopenForTrial() }
-    function onBusyChanged() { if (MonitorService.busy) root.closeSettings() }
     function onBrightnessStepped(requester, monitor, percent) {
       if (requester === root && percent > 0) root.showBrightnessOsd(percent)
     }
@@ -110,7 +97,6 @@ Panel {
       displays: MonitorService.liveMonitors,
       transaction: MonitorService.transaction,
       tab: view ? view.activeTab : "Display",
-      editingSettings: root.editingSettings,
       language: root.language,
       statusRuns: MonitorService.statusRuns,
       wirelessDisplay: {
@@ -133,7 +119,6 @@ Panel {
     function brightness(percent: string): string { return root.brightnessIpc(percent) }
     function state(): string { return JSON.stringify(root.statusObject()) }
     function status(): string { return JSON.stringify(root.statusObject()) }
-    function settings(): void { root.openSettings() }
     function scanWireless(): void { root.scanWireless() }
     function stopWireless(): void { MonitorService.stopCast() }
     function open(): void { root.open() }
