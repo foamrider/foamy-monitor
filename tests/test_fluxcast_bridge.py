@@ -4,12 +4,14 @@
 The bridge runs as a process with a fake `fluxcast` (and `ffmpeg`) on a PATH
 that holds nothing else, so the installed FluxCast never runs and nothing is
 cast. FOAMY_HELPER is the helper's argv prefix as a JSON list starting with
-an absolute path (default: the Python helper), e.g.
+an absolute path (default: this machine's
+bin/<arch>/foamy-monitor-helper), e.g.
   FOAMY_HELPER='["/abs/bin/aarch64/foamy-monitor-helper"]' python3 -I tests/test_fluxcast_bridge.py
 """
 
 import json
 import os
+import platform
 from pathlib import Path
 import signal
 import subprocess
@@ -27,7 +29,7 @@ def helper():
         if not prefix or not Path(prefix[0]).is_absolute():
             raise SystemExit("FOAMY_HELPER must be a JSON list starting with an absolute path")
         return prefix
-    return [sys.executable, str(PLUGIN / "fluxcast_bridge.py")]
+    return [str(PLUGIN / "bin" / platform.machine() / "foamy-monitor-helper")]
 
 
 # FAKE_MODE: "print" (write FAKE_OUTPUT, exit FAKE_EXIT), "hold" (write it,
@@ -214,12 +216,17 @@ class Bridge(unittest.TestCase):
         self.output.write_text("[0] 7a:2d:91:40:0b:ce TV\n")
         result = self.run_bridge("scan", FAKE_EXIT="3")
         self.assertEqual(result.returncode, 3)
+        # FluxCast's own 127 is passed on as 1.
+        result = self.run_bridge("scan", FAKE_EXIT="127")
+        self.assertEqual(result.returncode, 1)
+        self.assertFalse(json.loads(result.stdout)["ok"])
         self.assertEqual(json.loads(result.stdout), {"ok": False, "error": "Wireless display scan failed", "peers": []})
 
     def test_missing_packages_are_reported_before_starting_a_scan(self):
         self.fake.unlink()
         result = self.run_bridge("scan", "--timeout", "8")
-        self.assertNotEqual(result.returncode, 0)
+        # Not 126/127: the shell reads those as "no helper for this CPU".
+        self.assertEqual(result.returncode, 69)
         self.assertEqual(json.loads(result.stdout), {"ok": False, "missingPackages": ["fluxcast-git"], "peers": [],
                                                      "error": "Please install fluxcast-git"})
 
@@ -313,7 +320,7 @@ class Bridge(unittest.TestCase):
         (self.bin / "ffmpeg").unlink()
         self.log.unlink()
         result = self.cast()
-        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.returncode, 69)
         self.assertEqual(self.events(result.stdout), [{"type": "phase", "phase": "error", "detail": "Please install ffmpeg"}])
         self.fake.unlink()
         result = self.cast()

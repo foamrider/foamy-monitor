@@ -8,12 +8,14 @@ address. Nothing reaches the live Hyprland, the session environment or the
 real ~/.config/hypr/monitors.lua.
 
 FOAMY_HELPER is the helper's argv prefix as a JSON list starting with an
-absolute path (default: the Python helper), e.g.
+absolute path (default: this machine's
+bin/<arch>/foamy-monitor-helper), e.g.
   FOAMY_HELPER='["/abs/bin/aarch64/foamy-monitor-helper"]' python3 -I tests/test_display_transaction.py
 """
 
 import json
 import os
+import platform
 from pathlib import Path
 import re
 import subprocess
@@ -32,7 +34,7 @@ def helper():
         if not prefix or not Path(prefix[0]).is_absolute():
             raise SystemExit("FOAMY_HELPER must be a JSON list starting with an absolute path")
         return prefix
-    return [sys.executable, str(PLUGIN / "display_transaction.py")]
+    return [str(PLUGIN / "bin" / platform.machine() / "foamy-monitor-helper")]
 
 
 OMARCHY_CONFIG = '''-- Omarchy's default monitor configuration.
