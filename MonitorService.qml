@@ -6,10 +6,11 @@ import Quickshell.Hyprland
 import Quickshell.Io
 import "kit"
 import "Model.js" as Model
+import "kit/FoamyNative.js" as FoamyNative
 
 // Display state shared by every Foamy Monitor bar instance (4.5 draws one
 // bar per monitor). Nothing here polls while every popup is closed:
-//   - display_transaction.py status runs once when the first panel joins,
+//   - the helper's status (bin/<arch>/foamy-monitor-helper) runs once when the first panel joins,
 //     when its state file changes (FileView watch: another popup, the trial
 //     worker), on Hyprland output events, every 5 s while a popup is open and
 //     every second during a trial (a safety net for the file watch);
@@ -38,9 +39,19 @@ Singleton {
     }
   }
 
-  function localPath(url) { return decodeURIComponent(String(url).replace(/^file:\/\//, "")) }
-  readonly property string bridge: localPath(Qt.resolvedUrl("display_transaction.py"))
-  readonly property string fluxCastBridge: localPath(Qt.resolvedUrl("fluxcast_bridge.py"))
+  // The native helper (display transaction and FluxCast bridge), bin/<arch>/.
+  readonly property string pluginDir: FoamyNative.localPath(Qt.resolvedUrl("."))
+  readonly property string helperName: "foamy-monitor-helper"
+  function helper(args) { return FoamyNative.command(pluginDir, helperName, args) }
+  // No helper for this CPU (exit 126/127): say so once, never retry.
+  property bool helperUnavailable: false
+  function markUnavailable() {
+    helperUnavailable = true
+    commands = []
+    statusPending = false
+    error = FoamyNative.UNAVAILABLE_TEXT
+    wirelessError = FoamyNative.UNAVAILABLE_TEXT
+  }
 
   // ---- Display transaction ------------------------------------------------
   property var transaction: ({ phase: "idle", base: [], draft: [] })
@@ -81,7 +92,7 @@ Singleton {
 
   // Nothing runs without a panel (preview mocks set the state directly).
   function enqueue(action, payload) {
-    if (!active) return
+    if (!active || helperUnavailable) return
     if (action === "status") {
       // A queued command reads the displays when it starts, so it covers this request.
       if (commands.length) return
@@ -98,7 +109,7 @@ Singleton {
     statusPending = false
     commandProc.action = next.action
     commandProc.payload = next.payload
-    commandProc.command = ["python3", bridge, next.action]
+    commandProc.command = helper([next.action])
     if (next.action === "status") statusRuns++
     commandProc.running = true
   }
@@ -108,6 +119,7 @@ Singleton {
     if (active && demanded && !cursorInfoProc.running) cursorInfoProc.running = true
   }
   function acceptResult(text) {
+    if (helperUnavailable) return
     if (arrangementDragActive) { deferredResult = text; return }
     try {
       var result = JSON.parse(text)
@@ -146,6 +158,7 @@ Singleton {
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.acceptResult(text) }
     stderr: StdioCollector { id: commandError; waitForEnd: true }
     onExited: function(code) {
+      if (FoamyNative.unavailable(code)) { root.markUnavailable(); return }
       if (code && commandError.text) root.error = String(commandError.text).trim()
       Qt.callLater(root.flushCommands)
     }
@@ -389,16 +402,16 @@ Singleton {
   }
   // A dependency check, then a scan (Scan button, IPC, the tab shown).
   function checkWireless() {
-    if (!active || dependenciesProc.running || scanProc.running || castProc.running) return
+    if (!active || helperUnavailable || dependenciesProc.running || scanProc.running || castProc.running) return
     dependenciesProc.running = true
   }
   function startWirelessScan() {
-    if (!active || scanProc.running || castProc.running || missingPackages.length) return
+    if (!active || helperUnavailable || scanProc.running || castProc.running || missingPackages.length) return
     wirelessScanExpectedStop = false
     wirelessError = ""
     wirelessScanState = "scanning"
     wirelessScanRuns++
-    scanProc.command = ["python3", fluxCastBridge, "scan", "--timeout", "8"]
+    scanProc.command = helper(["scan", "--timeout", "8"])
     scanProc.running = true
   }
   function cancelWirelessScan() {
@@ -407,7 +420,7 @@ Singleton {
     scanProc.signal(15)
   }
   function connectWirelessPeer(peer, label, monitor) {
-    if (!active || !peer || castProc.running || missingPackages.length) return
+    if (!active || helperUnavailable || !peer || castProc.running || missingPackages.length) return
     if (!monitor) { wirelessError = "No enabled display"; return }
     // Discovery and casting share the Wi-Fi Direct device: stop the refresh first.
     if (scanProc.running || dependenciesProc.running) {
@@ -422,8 +435,8 @@ Singleton {
     castPhase = "starting"
     castDetail = ""
     wirelessError = ""
-    castProc.command = ["python3", fluxCastBridge, "cast", "--peer", peer.address, "--monitor", monitor,
-      "--output-res", "1920x1080", "--fps", "30", "--bitrate", "4M", "--timeout", "8"]
+    castProc.command = helper(["cast", "--peer", peer.address, "--monitor", monitor,
+      "--output-res", "1920x1080", "--fps", "30", "--bitrate", "4M", "--timeout", "8"])
     castProc.running = true
   }
   // Returns true when a picked receiver was waiting and its cast started.
@@ -470,10 +483,12 @@ Singleton {
   }
 
   property Process dependenciesProc: Process {
-    command: ["python3", root.fluxCastBridge, "check"]
+    command: root.helper(["check"])
+    onExited: function(code) { if (FoamyNative.unavailable(code)) root.markUnavailable() }
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (root.helperUnavailable) return
         var result = Model.parseFluxCastScan(text)
         root.missingPackages = result.missingPackages || []
         root.wirelessError = result.error
@@ -492,9 +507,15 @@ Singleton {
   property Process scanProc: Process {
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: if (!root.wirelessScanExpectedStop) root.acceptWirelessScan(text)
+      onStreamFinished: if (!root.wirelessScanExpectedStop && !root.helperUnavailable) root.acceptWirelessScan(text)
     }
     onExited: function(code) {
+      if (FoamyNative.unavailable(code)) {
+        root.markUnavailable()
+        root.wirelessScanState = "error"
+        root.wirelessScanExpectedStop = false
+        return
+      }
       if (root.wirelessScanExpectedStop) {
         root.wirelessScanExpectedStop = false
         root.wirelessScanState = !root.wirelessScannedAt ? "idle" : root.wirelessPeers.length ? "results" : "empty"
@@ -513,6 +534,12 @@ Singleton {
     stdout: SplitParser { onRead: function(line) { root.applyCastEvent(line) } }
     onExited: function(code) {
       root.castStopWatchdog.stop()
+      if (FoamyNative.unavailable(code)) {
+        root.markUnavailable()
+        root.castPhase = "error"
+        root.castExpectedStop = false
+        return
+      }
       if (root.castExpectedStop) {
         root.castPhase = "idle"
         root.castDetail = ""
@@ -532,7 +559,7 @@ Singleton {
   // The last panel is gone (plugin disabled or removed) or the shell is
   // reloading. Quickshell SIGKILLs a destroyed Process, so ask the bridges to
   // stop first; FluxCast also stops on its own when its bridge dies
-  // (PR_SET_PDEATHSIG in fluxcast_bridge.py).
+  // (PR_SET_PDEATHSIG in the helper's FluxCast bridge).
   property int teardowns: 0
   function teardown() {
     teardowns++

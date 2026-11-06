@@ -1,0 +1,20 @@
+[package]
+name = "foamy-monitor-helper"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# The kit: atomic writes, locks, bounded children, the JSON reply and panic exit.
+foamy-helper = { path = "../kit/rust/foamy-helper" }
+# Already in the tree through the kit: the state file and helper replies.
+serde_json = { version = "1", default-features = false, features = ["std"] }
+# Already in the tree through the kit: setsid, the parent-death signal, getppid, poll, access.
+rustix = { version = "1.1", default-features = false, features = ["std", "fs", "process", "event"] }
+# sigaction for the worker's and the bridge's SIGTERM/SIGINT handlers, the
+# close_range system call (close_fds) and getrandom (the trial token).
+libc = "0.2.153"
+# SHA-256 of HYPRLAND_INSTANCE_SIGNATURE for the state directory name
+# (Python's hashlib before). Pure Rust.
+sha2 = { version = "0.10", default-features = false }

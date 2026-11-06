@@ -15,9 +15,12 @@ Built for Omarchy 4.5; it also loads on Omarchy 4.0 (English only there). It
 replaces the stock Display widget (`omarchy.monitor`), so use one display
 plugin at a time and disable any older local replacement.
 
-Requires Hyprland, Python 3, `gsettings` (cursor size) and Omarchy's
+Requires Hyprland, `gsettings` (cursor size) and Omarchy's
 `omarchy-brightness-display` and `omarchy-display-text-size`. Brightness on
-external displays goes through Omarchy's DDC helper (`ddcutil`).
+external displays goes through Omarchy's DDC helper (`ddcutil`). The display
+and casting helper ships prebuilt for x86_64 and aarch64
+(`bin/<arch>/foamy-monitor-helper`); on other CPUs the panel says the helper
+isn't available.
 
 Optional, for wireless casting: FluxCast (`fluxcast-git`) and FFmpeg
 (`ffmpeg`).
@@ -79,6 +82,8 @@ brightness control).
   one search at a time for every bar.
 - FluxCast stops when the plugin is disabled or removed, when the shell
   reloads, and when its helper is killed (it runs with a parent-death signal).
+- A display trial runs in its own detached process, so it still reverts on
+  its timeout when the shell reloads or quits mid-trial.
 
 ### monitors.lua
 
@@ -122,6 +127,20 @@ installed.
 
 `kit/` holds shared components copied from [foamy-kit](https://github.com/foamrider/foamy-kit); edit them there, not here.
 
+The helper is Rust (`native/`, one binary for the display transaction and
+the FluxCast bridge; its contract is the comment at the top of
+`native/src/main.rs`). The committed binaries are built reproducibly with
+foamy-kit's build tool (needs rustup; see foamy-kit's "Native helpers"):
+
+```sh
+~/GitHub/Personal/foamy-kit/tools/build-native.sh . --test    # fmt, clippy, unit tests
+~/GitHub/Personal/foamy-kit/tools/build-native.sh .           # bin/x86_64, bin/aarch64, native/native.pin
+~/GitHub/Personal/foamy-kit/tools/build-native.sh . --verify  # clean rebuild, byte compare
+```
+
+Set `CARGO_TARGET_DIR` outside the plugin (e.g. `~/.cache/foamy-native/foamy-monitor`)
+before running cargo yourself; the shell hot-reloads plugin folders.
+
 ```sh
 node tests/model.test.js && node tests/i18n.test.cjs
 python3 -I tests/test_display_transaction.py && python3 -I tests/test_fluxcast_bridge.py
@@ -130,9 +149,14 @@ python3 tests/runtime-idle.py       # processes and CPU while every popup is clo
 bash tests/kit-check.sh
 ```
 
-The runtime tests use the foamy-kit harness (`FOAMY_KIT`, default
-`~/GitHub/Personal/foamy-kit`) with fake `hyprctl`, brightness and FluxCast
-commands; nothing reaches the live session or the displays.
+The helper tests run this machine's `bin/<arch>/foamy-monitor-helper`;
+`FOAMY_HELPER='["/abs/path/bin/aarch64/foamy-monitor-helper"]'` picks another
+(aarch64 runs through qemu-user binfmt). They put only fake `hyprctl`,
+`systemctl`, `dbus-update-activation-environment`, `fluxcast` and `ffmpeg`
+on PATH, with temp HOME/XDG dirs; the runtime tests put fake `hyprctl`,
+brightness and FluxCast commands first on PATH. Nothing reaches the live
+session, the displays or a wireless receiver. The runtime tests use the foamy-kit
+harness (`FOAMY_KIT`, default `~/GitHub/Personal/foamy-kit`).
 
 ## License
 
