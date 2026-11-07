@@ -3,7 +3,7 @@
 Display arrangement, safe display trials, brightness, scaling and wireless
 casting for the Omarchy bar.
 
-![Foamy Monitor screenshot](preview.png)
+![The Foamy Monitor panel arranging three sample displays](preview.png)
 
 ## Install
 
@@ -61,10 +61,11 @@ otherwise closes the panel.
 ### IPC
 
 `omarchy-shell foamy.monitor <command>` (4.5) or `qs ipc call foamy.monitor
-<command>`: `open`, `close`, `toggle`, `scanWireless`,
-`stopWireless`, `status` (JSON), and `brightness <percent>` for the focused
-display (`40`, `+5` or `-5`; it answers with an error when the display has no
-brightness control).
+<command>`: `open`, `close`, `toggle` (`show` and `hide` are aliases),
+`scanWireless` (opens the Wireless tab and searches), `stopWireless` (stops a
+running cast), `status` (JSON; `state` is an alias), and `brightness <percent>`
+for the focused display (`40`, `+5` or `-5`; it answers with an error when the
+display has no brightness control).
 
 ## How it works
 
