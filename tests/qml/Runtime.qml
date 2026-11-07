@@ -105,7 +105,7 @@ ShellRoot {
       shell.runsBefore = shell.service.statusRuns
       var draft = shell.service.transaction.draft
       external.payload = JSON.stringify({ id: draft[1].id, changes: { x: 4000 } })
-      external.command = ["python3", shell.service.bridge, "patch"]
+      external.command = shell.service.helper(["patch"])
       external.running = true
       stepTwo.start()
     }

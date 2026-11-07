@@ -8,8 +8,12 @@ PATH that holds nothing else from Omarchy. After a warm-up it counts the
 processes started and the CPU used by the shell and its children while every
 popup stays closed.
 
-  tests/runtime-idle.py [--plugin DIR] [--host 4.0|4.5] [--instances 3] [--seconds 30]
+  tests/runtime-idle.py [--plugin DIR] [--host 4.5|4.0] [--instances 3] [--seconds 30]
                         [--max-idle-spawns N]
+
+The 4.5 host (the default) is FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else
+the installed /usr/share/omarchy/shell. --host 4.0 needs FOAMY_HOST_40 (a 4.0
+shell) and prints SKIP without it.
 
 Exits 1 when more than --max-idle-spawns processes start in the idle window
 (the regression check; default 0).
@@ -28,7 +32,8 @@ import fakebin  # noqa: E402
 
 
 def kit_preview(plugin):
-    for candidate in (os.environ.get("FOAMY_KIT"), plugin.parent / "foamy-kit", HERE.parents[1] / "foamy-kit"):
+    for candidate in (os.environ.get("FOAMY_KIT"), plugin.parent / "foamy-kit", HERE.parents[1] / "foamy-kit",
+                      Path.home() / "GitHub/Personal/foamy-kit"):
         if candidate and (Path(candidate) / "preview/harness.py").is_file():
             return Path(candidate) / "preview"
     raise SystemExit("foamy-kit not found (set FOAMY_KIT)")
@@ -78,13 +83,20 @@ def calls(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--plugin", default=str(HERE.parent))
-    parser.add_argument("--host", default="4.5", choices=["4.0", "4.5"])
+    parser.add_argument("--host", default="4.5", choices=["4.5", "4.0"])
     parser.add_argument("--instances", type=int, default=3)
     parser.add_argument("--warmup", type=float, default=8)
     parser.add_argument("--seconds", type=float, default=30)
     parser.add_argument("--max-idle-spawns", type=int, default=0)
     args = parser.parse_args()
     plugin = Path(args.plugin).resolve()
+    if args.host == "4.0" and not os.environ.get("FOAMY_HOST_40"):
+        print("SKIP 4.0: set FOAMY_HOST_40 to an Omarchy 4.0 shell to run it")
+        return 0
+    # Set before the harness reads its hosts.
+    if not os.environ.get("FOAMY_HOST_45"):
+        root = os.environ.get("OMARCHY_TEST_ROOT")
+        os.environ["FOAMY_HOST_45"] = str(Path(root) / "shell") if root else "/usr/share/omarchy/shell"
     sys.path.insert(0, str(kit_preview(plugin)))
     import harness  # noqa: E402
 

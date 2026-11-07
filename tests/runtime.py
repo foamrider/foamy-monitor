@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Load Foamy Monitor offscreen under both hosts (4.0.6 installed, 4.5 reference)
+"""Load Foamy Monitor offscreen on Omarchy 4.5
 with the foamy-kit harness: isolated HOME/XDG/runtime dirs, no Wayland or
 Hyprland, and fake hyprctl/brightness/FluxCast on a PATH without Omarchy's
 scripts (tests/fakebin.py). Checks tests/qml/Runtime.qml, `qs ipc call
 foamy.monitor status` answered by the leader, that brightness jobs never
 overlapped, and that the teardown stopped FluxCast.
 
-FOAMY_KIT (default ~/GitHub/Personal/foamy-kit) provides the harness;
-FOAMY_HOST_40 / FOAMY_HOST_45 override the host shells."""
+FOAMY_KIT (default ~/GitHub/Personal/foamy-kit) provides the harness.
+The host is Omarchy 4.5: FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else
+the installed /usr/share/omarchy/shell. A 4.0 case runs only when FOAMY_HOST_40
+names a 4.0 shell; otherwise it prints SKIP."""
 import json
 import os
 from pathlib import Path
@@ -23,6 +25,11 @@ KIT = Path(os.environ.get("FOAMY_KIT", Path.home() / "GitHub/Personal/foamy-kit"
 if not (KIT / "preview/harness.py").exists():
     print(f"SKIP: foamy-kit harness not found at {KIT} (set FOAMY_KIT)")
     raise SystemExit(0)
+# Omarchy 4.5 only by default; set before the harness reads its hosts.
+if not os.environ.get("FOAMY_HOST_45"):
+    _root = os.environ.get("OMARCHY_TEST_ROOT")
+    os.environ["FOAMY_HOST_45"] = str(Path(_root) / "shell") if _root else "/usr/share/omarchy/shell"
+HOST_40 = bool(os.environ.get("FOAMY_HOST_40"))
 sys.path.insert(0, str(KIT / "preview"))
 import harness  # noqa: E402
 
@@ -104,5 +111,8 @@ if __name__ == "__main__":
     cases = [("4.0", "en"), ("4.5", "en"), ("4.5", "no"), ("4.5", "ar")]
     if len(sys.argv) > 1:
         cases = [c for c in cases if c[0] in sys.argv[1:] or f"{c[0]}/{c[1]}" in sys.argv[1:]]
+    if not HOST_40:
+        print("SKIP runtime 4.0 en: set FOAMY_HOST_40 to an Omarchy 4.0 shell to run it")
+        cases = [case for case in cases if case[0] != "4.0"]
     results = [run(host, lang) for host, lang in cases]
     raise SystemExit(0 if all(results) else 1)
