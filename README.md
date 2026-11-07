@@ -11,8 +11,7 @@ casting for the Omarchy bar.
 omarchy plugin add https://github.com/foamrider/foamy-monitor.git --enable
 ```
 
-Built for Omarchy 4.5; it also loads on Omarchy 4.0 (English only there). It
-replaces the stock Display widget (`omarchy.monitor`), so use one display
+Requires Omarchy 4.5. It replaces the stock Display widget (`omarchy.monitor`), so use one display
 plugin at a time and disable any older local replacement.
 
 Requires Hyprland, `gsettings` (cursor size) and Omarchy's
@@ -108,7 +107,7 @@ they do not manage system services or require administrator privileges.
 
 Language follows **Omarchy → Setup → Language** on Omarchy 4.5 (English and
 Norwegian catalogs; other languages fall back to English, and right-to-left
-languages mirror the panel). Omarchy 4.0 shows the plugin in English.
+languages mirror the panel).
 
 ## Remove
 
