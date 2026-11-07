@@ -145,7 +145,7 @@ before running cargo yourself; the shell hot-reloads plugin folders.
 ```sh
 node tests/model.test.js && node tests/i18n.test.cjs
 python3 -I tests/test_display_transaction.py && python3 -I tests/test_fluxcast_bridge.py
-python3 tests/runtime.py            # offscreen, 4.0 and 4.5 hosts (needs foamy-kit)
+python3 tests/runtime.py            # offscreen on the installed 4.5 shell, 4.0 only with FOAMY_HOST_40 (needs foamy-kit)
 python3 tests/runtime-idle.py       # processes and CPU while every popup is closed
 bash tests/kit-check.sh
 ```

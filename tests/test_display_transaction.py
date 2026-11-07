@@ -453,7 +453,7 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
         self.assertEqual(after(self.c, result, patches=[("DP-1", {"scale": 1.25})]), result)
 
     def test_internal_panel_rules_use_the_connector_clamshell_reads(self):
-        # omarchy-hyprland-monitor-clamshell (4.0.6 and 4.5) finds the internal
+        # omarchy-hyprland-monitor-clamshell (4.5.0, as in 4.0.6) finds the internal
         # panel's scale/position with this sed match on output = "<connector>".
         def clamshell_value(source, output, key):
             code = re.sub(r"--.*$", "", source, flags=re.M)
