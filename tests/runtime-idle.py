@@ -151,7 +151,7 @@ def main():
         brightness = [c for c in startup if c.startswith("omarchy-brightness-display")]
         print(f"startup brightness probes: {len(brightness)}")
         spawned = len(window)
-        failures = [l for l in (run.base / "qs.log").read_text().splitlines() if "TypeError" in l or "ReferenceError" in l]
+        failures = [line for line in (run.base / "qs.log").read_text().splitlines() if "TypeError" in line or "ReferenceError" in line]
         failures += [f"ran a host command: {line}" for line in run.host_commands()]
         for line in failures[:10]:
             print("  qml: " + line)

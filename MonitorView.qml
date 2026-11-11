@@ -931,7 +931,7 @@ PanelKeyCatcher {
     }
   }
   component ArrangementDiagram: Item {
-    id: diagram
+    id: arrangement
     height: Style.space(150)
     // Display geometry is spatial: never mirror it.
     LayoutMirroring.enabled: false
@@ -950,7 +950,7 @@ PanelKeyCatcher {
     readonly property real spanX: Math.max(1, maxX - minX)
     readonly property real spanY: Math.max(1, maxY - minY)
     // A little headroom so a box at the bounding box's edge is not flush with the frame.
-    readonly property real pxPerUnit: Math.min(diagram.width / diagram.spanX, diagram.height / diagram.spanY) * 0.97
+    readonly property real pxPerUnit: Math.min(arrangement.width / arrangement.spanX, arrangement.height / arrangement.spanY) * 0.97
     readonly property real contentWidth: spanX * pxPerUnit
     readonly property real contentHeight: spanY * pxPerUnit
 
@@ -964,16 +964,16 @@ PanelKeyCatcher {
     }
 
     Item {
-      width: diagram.contentWidth
-      height: diagram.contentHeight
+      width: arrangement.contentWidth
+      height: arrangement.contentHeight
       anchors.centerIn: parent
       Repeater {
         id: boxRepeater
-        model: diagram.boxes
+        model: arrangement.boxes
         ArrangementBox {
           required property var modelData
           required property int index
-          canvas: diagram
+          canvas: arrangement
           info: modelData
           boxIndex: index
         }
