@@ -1,0 +1,73 @@
+# qmllint findings accepted when the check was adopted. tests/validate.sh fails on any
+# finding not listed here. Regenerate with `tests/validate.sh --update-baseline qmllint`
+# only to drop fixed entries or after reviewing every added one; never to pass a check.
+IdentifyOverlay.qml: missing-property: Member "display" not found on type "QObject" | font.pixelSize: FoamyStyle.font.display
+MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var after = Object.assign({}, brightnessAfterRead)
+MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var after = Object.assign({}, root.brightnessAfterRead)
+MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var change = root.brightnessAfterRead[job.name]
+MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var gtk = result.gtkScale || {
+MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var percent = root.changeBrightness(job.name, change, null)
+MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var requester = root._stepRequester[job.name] || null
+MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var requesters = Object.assign({}, _stepRequester)
+MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var requesters = Object.assign({}, root._stepRequester)
+MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var result = JSON.parse(text)
+MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var stepRequesters = Object.assign({}, _stepRequester)
+MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var writes = Object.assign({}, brightnessWrites)
+MonitorService.qml: import: Type MonitorService not declared as singleton in qmldir but using pragma Singleton
+MonitorService.qml: missing-property: Member "action" not found on type "Process" | if (commandProc.action !== "status" || error === statusError)
+MonitorService.qml: missing-property: Member "action" not found on type "Process" | statusError = commandProc.action === "status" ? message : ""
+MonitorService.qml: missing-property: Member "action" not found on type MonitorService::commandProc with type Process | commandProc.action = next.action
+MonitorService.qml: missing-property: Member "job" not found on type "Process" | var job = brightnessProc.job
+MonitorService.qml: missing-property: Member "job" not found on type MonitorService::brightnessProc with type Process | brightnessProc.job = job
+MonitorService.qml: missing-property: Member "job" not found on type MonitorService::brightnessProc with type Process | brightnessProc.job = null
+MonitorService.qml: missing-property: Member "payload" not found on type MonitorService::commandProc with type Process | commandProc.payload = next.payload
+MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var cx = 0; cx < candidatesX.length; cx++)
+MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var cy = 0; cy < candidatesY.length; cy++)
+MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < others.length; i++) {
+MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < pending.length; i++)
+MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < templates.length; i++) {
+MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var candidatesX = [o.x + o.w / 2 - rawX - w / 2, o.x - rawX, (o.x + o.w) - (rawX + w), o.x - (rawX + w), (o.x + o.w) - rawX]
+MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var candidatesY = [o.y + o.h / 2 - rawY - h / 2, o.y - rawY, (o.y + o.h) - (rawY + h), o.y - (rawY + h), (o.y + o.h) - rawY]
+MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var monitor = transaction.draft.find(function (m) {
+MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var next = tabs[Math.max(0, Math.min(tabs.length - 1, tabs.indexOf(key.slice(4)) + dx))]
+MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var o = others[i]
+MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var off = offlineMonitors[stopIndex("offline:")]
+MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var parts = templates[i].split("%1")
+MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var templates = ["Please install %1", "Could not read display settings: %1", "Unsupported scale for %1", "Unsupported resolution or refresh rate for %1", "Cast 
+MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var whole = String(text)
+MonitorView.qml: missing-property: Member "baseSize" not found on type "QObject" | currentValue: String(Style.font.baseSize)
+MonitorView.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: FoamyStyle.font.body
+MonitorView.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: small ? FoamyStyle.font.bodySmall : FoamyStyle.font.body
+MonitorView.qml: missing-property: Member "body" not found on type "QObject" | fontSize: FoamyStyle.font.body
+MonitorView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: small ? FoamyStyle.font.bodySmall : FoamyStyle.font.body
+MonitorView.qml: missing-property: Member "caption" not found on type "QObject" | font.pixelSize: FoamyStyle.font.caption
+MonitorView.qml: missing-property: Member "caption" not found on type "QObject" | font.pixelSize: FoamyStyle.font.caption
+MonitorView.qml: renamed-type: "Button" is explicitly renamed to "Ui.Button" via a qmldir entry or QT_QML_SOURCE_TYPENAME CMake property, use "Ui.Button" instead. | Button {
+MonitorView.qml: renamed-type: "Button" is explicitly renamed to "Ui.Button" via a qmldir entry or QT_QML_SOURCE_TYPENAME CMake property, use "Ui.Button" instead. | Button {
+MonitorView.qml: renamed-type: "Button" is explicitly renamed to "Ui.Button" via a qmldir entry or QT_QML_SOURCE_TYPENAME CMake property, use "Ui.Button" instead. | Button {
+MonitorView.qml: renamed-type: "PanelKeyCatcher" is explicitly renamed to "Ui.PanelKeyCatcher" via a qmldir entry or QT_QML_SOURCE_TYPENAME CMake property, use "Ui.PanelKeyCatcher" instead. | PanelKeyCatcher {
+MonitorView.qml: renamed-type: "PanelSlider" is explicitly renamed to "Ui.PanelSlider" via a qmldir entry or QT_QML_SOURCE_TYPENAME CMake property, use "Ui.PanelSlider" instead. | PanelSlider {
+Panel.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < screens.length; i++)
+Panel.qml: id-shadows-member: Id for object FoamyMember shadows property "member". Rename one or the other. | if (member.members <= 1 || root.screenName === MonitorService.focusedMonitor)
+Panel.qml: id-shadows-member: Id for object FoamyPopup shadows property "popup". Rename one or the other. | readonly property string screenName: popup.screen ? String(popup.screen.name) : ""
+Panel.qml: id-shadows-member: Note: Id defined here | id: member
+Panel.qml: id-shadows-member: Note: Id defined here | id: popup
+Panel.qml: missing-property: Member "activeTab" not found on type "QQuickItem" | tab: view ? view.activeTab : "Display",
+Panel.qml: missing-property: Member "selectedLive" not found on type "QQuickItem" | scale: view && view.selectedLive ? String(view.selectedLive.scale) : "",
+Panel.qml: missing-property: Member "selectedLive" not found on type "QQuickItem" | scale: view && view.selectedLive ? String(view.selectedLive.scale) : "",
+Panel.qml: missing-property: Member "selectedMonitor" not found on type "QQuickItem" | selectedMonitor: view ? view.selectedMonitor : "",
+Panel.qml: missing-property: Member "shell" not found on type "QObject" | bar.shell.summon("omarchy.osd", JSON.stringify({
+Panel.qml: missing-property: Member "shell" not found on type "QObject" | if (!bar || !bar.shell || typeof bar.shell.summon !== "function")
+Panel.qml: missing-property: Member "shell" not found on type "QObject" | if (!bar || !bar.shell || typeof bar.shell.summon !== "function")
+preview/Preview.qml: id-shadows-member: Id for object FoamyPopup shadows property "popup". Rename one or the other. | readonly property Item popup: popup
+preview/Preview.qml: id-shadows-member: Note: Id defined here | id: popup
+preview/Preview.qml: incompatible-type: Cannot assign binding of type FoamyPopup to QQuickItem | readonly property Item popup: popup
+preview/Preview.qml: missing-property: Member "activeTab" not found on type FoamyPopup::bodyItem with type QQuickItem | view.activeTab = state === "advanced" ? "Advanced" : state.indexOf("wireless") === 0 ? "Wireless" : "Display"
+preview/Preview.qml: missing-property: Member "now" not found on type FoamyPopup::bodyItem with type QQuickItem | view.now = Date.now()
+preview/Preview.qml: missing-property: Member "place" not found on type "QQuickItem" | view.place("")
+preview/Preview.qml: missing-property: Member "place" not found on type "QQuickItem" | view.place("peer:0")
+preview/Preview.qml: missing-property: Member "place" not found on type "QQuickItem" | view.place("resolution")
+preview/Preview.qml: missing-property: Member "place" not found on type "QQuickItem" | view.place("revert")
+preview/Preview.qml: missing-property: Member "place" not found on type "QQuickItem" | view.place("scan")
+preview/Preview.qml: missing-property: Member "selectedMonitor" not found on type FoamyPopup::bodyItem with type QQuickItem | view.selectedMonitor = loading ? "" : live[0].id
+preview/Preview.qml: unqualified: Unqualified access | host: mockHost
