@@ -303,7 +303,7 @@ ShellRoot {
     var aged = Object.assign({}, shell.service.brightness)
     aged["DP-2"] = { available: true, percent: 55, at: Date.now() - 10000 }
     shell.service.brightness = aged
-    shell.sh("printf 80 > \"$FOAMY_CALLS.brightness\"", stepSixB)
+    shell.sh("printf 80 > \"$FOAMY_CALLS.brightness.DP-2\"", stepSixB)
   }
 
   function stepSixB() {

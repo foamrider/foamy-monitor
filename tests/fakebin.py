@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Shared fakes for the offscreen runtime tests: hyprctl, brightness, gsettings.
+"""Shared fakes for the offscreen runtime tests: hyprctl, brightness, gsettings,
+the text-size script and FluxCast.
 
 Each fake is a small script written into a temporary bin directory. They log
 every call to $FOAMY_CALLS and never touch the
@@ -65,12 +66,14 @@ with open(os.environ["FOAMY_CALLS"] + ".ddc", "a") as ddc:
 time.sleep(0.05)
 with open(os.environ["FOAMY_CALLS"] + ".ddc", "a") as ddc:
     ddc.write("end %f\\n" % time.monotonic())
+# Each display has its own level, $FOAMY_CALLS.brightness.<name>.
+name = sys.argv[sys.argv.index("--monitor") + 1] if "--monitor" in sys.argv else "focused"
+level = os.environ["FOAMY_CALLS"] + ".brightness." + name
 if any(a.endswith("%") for a in sys.argv[1:]):
     # Like hardware, a written level reads back.
-    with open(os.environ["FOAMY_CALLS"] + ".brightness", "w") as level:
-        level.write(sys.argv[-1].rstrip("%"))
+    with open(level, "w") as out:
+        out.write(sys.argv[-1].rstrip("%"))
     sys.exit(0)
-level = os.environ["FOAMY_CALLS"] + ".brightness"
 print(open(level).read().strip() if os.path.exists(level) else "%d" % BRIGHTNESS)
 ''',
         "gsettings": LOGGER + 'print("24" if "cursor-size" in sys.argv else "\'Adwaita\'")\n',
