@@ -14,7 +14,6 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-import time
 
 PLUGIN = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN / "tests"))
@@ -39,13 +38,12 @@ hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
 
 
 def ipc_status(run):
+    """The leader's answer to `status` once the scene logged FOAMY READY."""
+    if not run.wait_for_log("FOAMY READY", timeout=60):
+        return None
     by_id = Path(run.env["XDG_RUNTIME_DIR"]) / "quickshell/by-id"
-    for _ in range(150):
-        ids = [p.name for p in by_id.iterdir()] if by_id.is_dir() else []
-        if ids and "FOAMY READY" in (run.base / "qs.log").read_text(errors="replace"):
-            break
-        time.sleep(0.1)
-    else:
+    ids = harness.wait_for(lambda: [p.name for p in by_id.iterdir()] if by_id.is_dir() else [], 10)
+    if not ids:
         return None
     result = subprocess.run(["qs", "ipc", "-i", ids[0], "call", "foamy.monitor", "status"], env=run.env,
                             capture_output=True, text=True, timeout=10)
@@ -69,18 +67,17 @@ def run(host, lang):
     (home / ".config/hypr/monitors.lua").write_text(CONFIG)
     fake = fakebin.write(r.base / "bin", count=3)
     calls = r.base / "calls.log"
-    r.env.update(FOAMY_LANG=lang, FOAMY_HOLD_MS="500", PATH=f"{fake}:/usr/bin", FOAMY_CALLS=str(calls),
+    # The fakes first, then the harness's PATH: any other omarchy-* command
+    # is a stub that exits 127 and is logged (Run.host_commands()).
+    r.env.update(FOAMY_LANG=lang, FOAMY_HOLD_MS="500", PATH=f"{fake}:{r.env['PATH']}", FOAMY_CALLS=str(calls),
                  FOAMY_FAKEBIN=str(fake))
-    log_path = r.base / "qs.log"
-    process = subprocess.Popen(["qs", "-p", str(r.root), "--no-color"], env=r.env, stdout=log_path.open("w"),
-                               stderr=subprocess.STDOUT, start_new_session=True)
+    r.start()
     try:
         status = ipc_status(r)
-        process.wait(timeout=90)
+        r.wait(timeout=240)
     finally:
-        if process.poll() is None:
-            process.kill()
-    log = log_path.read_text(errors="replace")
+        r.stop()
+    log = r.log
     result = next((line.split("FOAMY RESULT ", 1)[1] for line in log.splitlines() if "FOAMY RESULT" in line), "no result")
     failures = [line for line in log.splitlines() if "FOAMY FAIL" in line or any(m in line for m in harness.FAILURE_MARKERS)]
     try:
@@ -94,6 +91,7 @@ def run(host, lang):
         failures.append(f"brightness jobs overlapped (max {depth} at once, {jobs} jobs)")
     if not stopped:
         failures.append("FluxCast was not signalled by the teardown")
+    failures += [f"ran a host command: {line}" for line in r.host_commands()]
     # The hung brightness command (fakebin ddchang) ran, and nothing of it is left.
     hang_pid = Path(str(calls) + ".ddchang.pid")
     if not hang_pid.exists():

@@ -19,8 +19,6 @@ Exits 1 when more than --max-idle-spawns processes start in the idle window
 """
 import argparse
 import os
-import signal
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -75,6 +73,17 @@ def cpu_seconds(pid):
     return sum(int(v) for v in fields[11:15]) / os.sysconf("SC_CLK_TCK")
 
 
+def children(pid):
+    """The pids of `pid`'s child processes (every thread's)."""
+    found = []
+    for task in Path(f"/proc/{pid}/task").glob("*"):
+        try:
+            found += (task / "children").read_text().split()
+        except OSError:
+            continue
+    return found
+
+
 def calls(path):
     return path.read_text().splitlines() if path.exists() else []
 
@@ -83,7 +92,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--plugin", default=str(HERE.parent))
     parser.add_argument("--instances", type=int, default=3)
-    parser.add_argument("--warmup", type=float, default=8)
+    parser.add_argument("--warmup", type=float, default=60, help="longest wait for startup to settle")
     parser.add_argument("--seconds", type=float, default=30)
     parser.add_argument("--max-idle-spawns", type=int, default=0)
     args = parser.parse_args()
@@ -102,21 +111,31 @@ def main():
         (home / ".config/hypr/monitors.lua").write_text(CONFIG)
         fake = fakebin.write(run.base / "bin", count=args.instances)
         log = run.base / "calls.log"
-        run.env.update({"PATH": f"{fake}:/usr/bin", "FOAMY_CALLS": str(log), "FOAMY_INSTANCES": str(args.instances)})
-        with (run.base / "qs.log").open("w") as output:
-            process = subprocess.Popen(["qs", "-p", str(run.root), "--no-color"], env=run.env, stdout=output,
-                                       stderr=output, start_new_session=True)
-            try:
-                time.sleep(args.warmup)
-                if process.poll() is not None:
-                    raise SystemExit("qs exited early:\n" + (run.base / "qs.log").read_text()[-3000:])
-                start_cpu, start_calls = cpu_seconds(process.pid), len(calls(log))
-                time.sleep(args.seconds)
-                end_cpu, window = cpu_seconds(process.pid), calls(log)[start_calls:]
-            finally:
-                if process.poll() is None:
-                    os.killpg(process.pid, signal.SIGTERM)
-                    process.wait(timeout=10)
+        # The fakes first, then the harness's PATH: any other omarchy-* command
+        # is a stub that exits 127 and is logged (Run.host_commands()).
+        run.env.update({"PATH": f"{fake}:{run.env['PATH']}", "FOAMY_CALLS": str(log),
+                        "FOAMY_INSTANCES": str(args.instances)})
+        run.start()
+        try:
+            # Warm-up: the panels loaded and the startup status (and anything
+            # it started) is over: no child process and no new call for 1 s.
+            if not run.wait_for_log("FOAMY READY", timeout=60):
+                raise SystemExit("qs did not start:\n" + (run.base / "qs.log").read_text()[-3000:])
+            quiet = {"since": time.monotonic(), "calls": -1}
+
+            def settled():
+                count = len(calls(log))
+                if count != quiet["calls"] or children(run.process.pid):
+                    quiet.update(since=time.monotonic(), calls=count)
+                return time.monotonic() - quiet["since"] >= 1 and count > 0
+
+            if not harness.wait_for(settled, args.warmup, interval=0.1):
+                raise SystemExit(f"the startup calls did not settle within {args.warmup:.0f} s")
+            start_cpu, start_calls = cpu_seconds(run.process.pid), len(calls(log))
+            time.sleep(args.seconds)  # the idle window itself: time is what it measures
+            end_cpu, window = cpu_seconds(run.process.pid), calls(log)[start_calls:]
+        finally:
+            run.stop()
         used = end_cpu - start_cpu
         startup = calls(log)[:start_calls]
         print(f"plugin {plugin} host 4.5, {args.instances} instances, idle window {args.seconds:.0f} s")
@@ -133,8 +152,12 @@ def main():
         print(f"startup brightness probes: {len(brightness)}")
         spawned = len(window)
         failures = [l for l in (run.base / "qs.log").read_text().splitlines() if "TypeError" in l or "ReferenceError" in l]
+        failures += [f"ran a host command: {line}" for line in run.host_commands()]
         for line in failures[:10]:
             print("  qml: " + line)
+        if failures:
+            print(f"FAIL: {len(failures)} QML errors or host commands")
+            return 1
         if spawned > args.max_idle_spawns:
             print(f"FAIL: {spawned} processes started while idle (allowed {args.max_idle_spawns})")
             return 1
