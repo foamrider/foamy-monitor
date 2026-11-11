@@ -36,7 +36,7 @@ def helper():
 # then run until SIGINT or SIGTERM) or "stubborn" (like hold, but only a
 # SIGTERM ends it; it also starts a child in its process group that logs the
 # SIGTERM it gets).
-FAKE_FLUXCAST = r'''
+FAKE_FLUXCAST = r"""
 import os, signal, subprocess, sys, time
 log = os.environ["FAKE_LOG"]
 def write(*parts):
@@ -66,7 +66,7 @@ if mode in ("hold", "stubborn"):
     while True:
         time.sleep(0.05)
 sys.exit(int(os.environ.get("FAKE_EXIT", "0")))
-'''
+"""
 
 PEERS = """
 [FluxCast WFD] Wi-Fi Direct peer(s):
@@ -92,8 +92,13 @@ class Bridge(unittest.TestCase):
         self.fake.chmod(0o755)
         (self.bin / "ffmpeg").write_text("#!/bin/sh\nexit 0\n")
         (self.bin / "ffmpeg").chmod(0o755)
-        self.env = {"PATH": str(self.bin), "HOME": str(self.directory), "FAKE_LOG": str(self.log),
-                    "FAKE_OUTPUT": str(self.output), "LANG": "C.UTF-8"}
+        self.env = {
+            "PATH": str(self.bin),
+            "HOME": str(self.directory),
+            "FAKE_LOG": str(self.log),
+            "FAKE_OUTPUT": str(self.output),
+            "LANG": "C.UTF-8",
+        }
         self.output.write_text("")
         self.processes = []
 
@@ -133,8 +138,9 @@ class Bridge(unittest.TestCase):
 
     def start(self, *args, **extra):
         env = dict(self.env, **extra)
-        process = subprocess.Popen(helper() + list(args), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                   text=True, env=env)
+        process = subprocess.Popen(
+            helper() + list(args), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env
+        )
         self.processes.append(process)
         return process
 
@@ -149,8 +155,10 @@ class Bridge(unittest.TestCase):
         self.fake.unlink()
         result = self.run_bridge("check")
         self.assertEqual(result.returncode, 0)
-        self.assertEqual(json.loads(result.stdout), {"ok": False, "missingPackages": ["fluxcast-git"], "peers": [],
-                                                     "error": "Please install fluxcast-git"})
+        self.assertEqual(
+            json.loads(result.stdout),
+            {"ok": False, "missingPackages": ["fluxcast-git"], "peers": [], "error": "Please install fluxcast-git"},
+        )
         self.assertEqual(result.stdout.count("\n"), 1)
         # Not executable counts as missing; a directory is not an executable.
         self.fake.mkdir()
@@ -181,25 +189,49 @@ class Bridge(unittest.TestCase):
         self.output.write_text(PEERS)
         result = self.run_bridge("scan", "--timeout", "8")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout), {"ok": True, "error": "", "peers": [
-            {"index": 0, "address": "7A:2D:91:40:0B:CE", "name": "Living Room TV", "source": "NetworkManager", "wfdCapable": True},
-            {"index": 1, "address": "02:11:22:33:44:55", "name": "", "source": "wpa_cli", "wfdCapable": False},
-            {"index": 12, "address": "AA:BB:CC:DD:EE:FF", "name": "Bedroom via Box", "source": "wpa_cli", "wfdCapable": False},
-        ]})
+        self.assertEqual(
+            json.loads(result.stdout),
+            {
+                "ok": True,
+                "error": "",
+                "peers": [
+                    {
+                        "index": 0,
+                        "address": "7A:2D:91:40:0B:CE",
+                        "name": "Living Room TV",
+                        "source": "NetworkManager",
+                        "wfdCapable": True,
+                    },
+                    {"index": 1, "address": "02:11:22:33:44:55", "name": "", "source": "wpa_cli", "wfdCapable": False},
+                    {
+                        "index": 12,
+                        "address": "AA:BB:CC:DD:EE:FF",
+                        "name": "Bedroom via Box",
+                        "source": "wpa_cli",
+                        "wfdCapable": False,
+                    },
+                ],
+            },
+        )
         self.assertEqual(result.stdout.count("\n"), 1)
         self.assertEqual(self.lines("argv"), [["argv", "--wfd-scan", "--wfd-timeout", "8"]])
 
     def test_scan_details(self):
-        self.output.write_text("  [7] 7a:2d:91:40:0b:ce\r\n  [8] 7a:2d:91:40:0b:cf  Kitchen  \n"
-                               "WFD capability data detected\n  [9] 7a:2d:91:40:0b:d0 via æøå\n")
+        self.output.write_text(
+            "  [7] 7a:2d:91:40:0b:ce\r\n  [8] 7a:2d:91:40:0b:cf  Kitchen  \n"
+            "WFD capability data detected\n  [9] 7a:2d:91:40:0b:d0 via æøå\n"
+        )
         result = self.run_bridge("scan", "--timeout", "3")
         self.assertEqual(self.lines("argv"), [["argv", "--wfd-scan", "--wfd-timeout", "3"]])
-        self.assertEqual(json.loads(result.stdout)["peers"], [
-            {"index": 7, "address": "7A:2D:91:40:0B:CE", "name": "", "source": "", "wfdCapable": False},
-            {"index": 8, "address": "7A:2D:91:40:0B:CF", "name": "Kitchen", "source": "", "wfdCapable": True},
-            {"index": 9, "address": "7A:2D:91:40:0B:D0", "name": "", "source": "æøå", "wfdCapable": False},
-        ])
-        self.assertIn("æøå", result.stdout)          # not \u-escaped
+        self.assertEqual(
+            json.loads(result.stdout)["peers"],
+            [
+                {"index": 7, "address": "7A:2D:91:40:0B:CE", "name": "", "source": "", "wfdCapable": False},
+                {"index": 8, "address": "7A:2D:91:40:0B:CF", "name": "Kitchen", "source": "", "wfdCapable": True},
+                {"index": 9, "address": "7A:2D:91:40:0B:D0", "name": "", "source": "æøå", "wfdCapable": False},
+            ],
+        )
+        self.assertIn("æøå", result.stdout)  # not \u-escaped
 
     def test_no_peer_message_produces_empty_list(self):
         self.output.write_text("[FluxCast WFD] No Wi-Fi Direct peers found.")
@@ -209,7 +241,9 @@ class Bridge(unittest.TestCase):
         self.assertEqual(self.lines("argv"), [["argv", "--wfd-scan", "--wfd-timeout", "8"]])
 
     def test_scan_failure_reports_the_last_error_and_exit_code(self):
-        self.output.write_text("[FluxCast WFD] ERROR: first\nnoise\n  [FluxCast WFD] ERROR: no p2p device: ERROR: x  \n")
+        self.output.write_text(
+            "[FluxCast WFD] ERROR: first\nnoise\n  [FluxCast WFD] ERROR: no p2p device: ERROR: x  \n"
+        )
         result = self.run_bridge("scan", FAKE_EXIT="4")
         self.assertEqual(result.returncode, 4)
         self.assertEqual(json.loads(result.stdout), {"ok": False, "error": "no p2p device: ERROR: x", "peers": []})
@@ -227,8 +261,10 @@ class Bridge(unittest.TestCase):
         result = self.run_bridge("scan", "--timeout", "8")
         # Not 126/127: the shell reads those as "no helper for this CPU".
         self.assertEqual(result.returncode, 69)
-        self.assertEqual(json.loads(result.stdout), {"ok": False, "missingPackages": ["fluxcast-git"], "peers": [],
-                                                     "error": "Please install fluxcast-git"})
+        self.assertEqual(
+            json.loads(result.stdout),
+            {"ok": False, "missingPackages": ["fluxcast-git"], "peers": [], "error": "Please install fluxcast-git"},
+        )
 
     def test_discovery_runs_without_capture_dependencies(self):
         (self.bin / "ffmpeg").unlink()
@@ -269,75 +305,144 @@ class Bridge(unittest.TestCase):
             "[FluxCast WFD] Connecting to AA:BB:CC:DD:EE:FF\r"
             "unrelated diagnostic\n"
             "[FluxCast WFD] P2P link is activated; waiting for RTSP session...\r\n"
-            "[FluxCast WFD RTSP] PLAY accepted; media stream started.\n")
+            "[FluxCast WFD RTSP] PLAY accepted; media stream started.\n"
+        )
         result = self.cast("--output-res", "1280x720", "--fps", "60", "--bitrate", "8M", "--timeout", "12")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.lines("argv"), [["argv", "--protocol", "wfd", "--wfd-peer", "AA:BB:CC:DD:EE:FF",
-                                               "--monitor", "DP-1", "--output-res", "1280x720", "--fps", "60",
-                                               "--bitrate", "8M", "--wfd-timeout", "12"]])
-        self.assertEqual(self.events(result.stdout), [
-            {"type": "phase", "phase": "starting", "detail": "Preparing FluxCast"},
-            {"type": "phase", "phase": "scanning", "detail": "Looking for the selected wireless display"},
-            {"type": "phase", "phase": "connecting", "detail": "Creating the Wi-Fi Direct connection"},
-            {"type": "phase", "phase": "waiting", "detail": "Waiting for the receiver to start mirroring"},
-            {"type": "phase", "phase": "casting", "detail": "Desktop and audio are being shared"},
-            {"type": "phase", "phase": "idle", "detail": "Cast ended"},
-            {"type": "exit", "expected": False, "code": 0},
-        ])
+        self.assertEqual(
+            self.lines("argv"),
+            [
+                [
+                    "argv",
+                    "--protocol",
+                    "wfd",
+                    "--wfd-peer",
+                    "AA:BB:CC:DD:EE:FF",
+                    "--monitor",
+                    "DP-1",
+                    "--output-res",
+                    "1280x720",
+                    "--fps",
+                    "60",
+                    "--bitrate",
+                    "8M",
+                    "--wfd-timeout",
+                    "12",
+                ]
+            ],
+        )
+        self.assertEqual(
+            self.events(result.stdout),
+            [
+                {"type": "phase", "phase": "starting", "detail": "Preparing FluxCast"},
+                {"type": "phase", "phase": "scanning", "detail": "Looking for the selected wireless display"},
+                {"type": "phase", "phase": "connecting", "detail": "Creating the Wi-Fi Direct connection"},
+                {"type": "phase", "phase": "waiting", "detail": "Waiting for the receiver to start mirroring"},
+                {"type": "phase", "phase": "casting", "detail": "Desktop and audio are being shared"},
+                {"type": "phase", "phase": "idle", "detail": "Cast ended"},
+                {"type": "exit", "expected": False, "code": 0},
+            ],
+        )
 
     def test_cast_defaults(self):
         result = self.cast()
-        self.assertEqual(self.lines("argv"), [["argv", "--protocol", "wfd", "--wfd-peer", "AA:BB:CC:DD:EE:FF",
-                                               "--monitor", "DP-1", "--output-res", "1920x1080", "--fps", "30",
-                                               "--bitrate", "4M", "--wfd-timeout", "8"]])
-        self.assertEqual(self.events(result.stdout)[-2:], [
-            {"type": "phase", "phase": "error", "detail": "FluxCast ended before casting started"},
-            {"type": "exit", "expected": False, "code": 0}])
+        self.assertEqual(
+            self.lines("argv"),
+            [
+                [
+                    "argv",
+                    "--protocol",
+                    "wfd",
+                    "--wfd-peer",
+                    "AA:BB:CC:DD:EE:FF",
+                    "--monitor",
+                    "DP-1",
+                    "--output-res",
+                    "1920x1080",
+                    "--fps",
+                    "30",
+                    "--bitrate",
+                    "4M",
+                    "--wfd-timeout",
+                    "8",
+                ]
+            ],
+        )
+        self.assertEqual(
+            self.events(result.stdout)[-2:],
+            [
+                {"type": "phase", "phase": "error", "detail": "FluxCast ended before casting started"},
+                {"type": "exit", "expected": False, "code": 0},
+            ],
+        )
         self.assertEqual(result.returncode, 0)
 
     def test_cast_failure_keeps_the_last_error(self):
-        self.output.write_text("Waiting for TV RTSP/WFD session\n[FluxCast WFD] ERROR: receiver rejected the session\n"
-                               "ERROR:\n")
+        self.output.write_text(
+            "Waiting for TV RTSP/WFD session\n[FluxCast WFD] ERROR: receiver rejected the session\nERROR:\n"
+        )
         result = self.cast(FAKE_EXIT="3")
         self.assertEqual(result.returncode, 3)
-        self.assertEqual(self.events(result.stdout), [
-            {"type": "phase", "phase": "starting", "detail": "Preparing FluxCast"},
-            {"type": "phase", "phase": "waiting", "detail": "Waiting for the receiver to start mirroring"},
-            {"type": "phase", "phase": "error", "detail": "receiver rejected the session"},
-            {"type": "phase", "phase": "error", "detail": "FluxCast failed"},
-            {"type": "phase", "phase": "error", "detail": "FluxCast failed"},
-            {"type": "exit", "expected": False, "code": 3},
-        ])
+        self.assertEqual(
+            self.events(result.stdout),
+            [
+                {"type": "phase", "phase": "starting", "detail": "Preparing FluxCast"},
+                {"type": "phase", "phase": "waiting", "detail": "Waiting for the receiver to start mirroring"},
+                {"type": "phase", "phase": "error", "detail": "receiver rejected the session"},
+                {"type": "phase", "phase": "error", "detail": "FluxCast failed"},
+                {"type": "phase", "phase": "error", "detail": "FluxCast failed"},
+                {"type": "exit", "expected": False, "code": 3},
+            ],
+        )
         self.output.write_text("")
         result = self.cast(FAKE_EXIT="5")
-        self.assertEqual(self.events(result.stdout)[-2:], [
-            {"type": "phase", "phase": "error", "detail": "FluxCast exited with code 5"},
-            {"type": "exit", "expected": False, "code": 5}])
+        self.assertEqual(
+            self.events(result.stdout)[-2:],
+            [
+                {"type": "phase", "phase": "error", "detail": "FluxCast exited with code 5"},
+                {"type": "exit", "expected": False, "code": 5},
+            ],
+        )
 
     def test_cast_allows_fluxcast_capture_fallback_but_needs_ffmpeg(self):
         result = self.cast()
-        self.assertEqual(self.events(result.stdout)[0], {"type": "phase", "phase": "starting", "detail": "Preparing FluxCast"})
+        self.assertEqual(
+            self.events(result.stdout)[0], {"type": "phase", "phase": "starting", "detail": "Preparing FluxCast"}
+        )
         (self.bin / "ffmpeg").unlink()
         self.log.unlink()
         result = self.cast()
         self.assertEqual(result.returncode, 69)
-        self.assertEqual(self.events(result.stdout), [{"type": "phase", "phase": "error", "detail": "Please install ffmpeg"}])
+        self.assertEqual(
+            self.events(result.stdout), [{"type": "phase", "phase": "error", "detail": "Please install ffmpeg"}]
+        )
         self.fake.unlink()
         result = self.cast()
-        self.assertEqual(self.events(result.stdout), [{"type": "phase", "phase": "error",
-                                                       "detail": "Please install fluxcast-git, ffmpeg"}])
+        self.assertEqual(
+            self.events(result.stdout),
+            [{"type": "phase", "phase": "error", "detail": "Please install fluxcast-git, ffmpeg"}],
+        )
         self.assertEqual(self.lines(), [])
 
     def test_cast_validates_its_arguments(self):
         result = self.run_bridge("cast", "--peer", "not-a-mac", "--monitor", "DP-1")
         self.assertEqual(result.returncode, 2)
-        self.assertEqual(self.events(result.stdout), [{"type": "phase", "phase": "error",
-                                                       "detail": "Invalid wireless display address"}])
-        for args in (["cast", "--monitor", "DP-1"], ["cast", "--peer", "AA:BB:CC:DD:EE:FF"],
-                     ["cast", "--peer", "AA:BB:CC:DD:EE:FF", "--monitor", "DP-1", "--fps", "0"],
-                     ["cast", "--peer", "AA:BB:CC:DD:EE:FF", "--monitor", "DP-1", "--fps", "121"],
-                     ["cast", "--peer", "AA:BB:CC:DD:EE:FF", "--monitor", "DP-1", "--timeout", "31"],
-                     ["scan", "--timeout", "0"], ["scan", "--timeout", "x"], ["scan", "extra"], ["nothing"], []):
+        self.assertEqual(
+            self.events(result.stdout),
+            [{"type": "phase", "phase": "error", "detail": "Invalid wireless display address"}],
+        )
+        for args in (
+            ["cast", "--monitor", "DP-1"],
+            ["cast", "--peer", "AA:BB:CC:DD:EE:FF"],
+            ["cast", "--peer", "AA:BB:CC:DD:EE:FF", "--monitor", "DP-1", "--fps", "0"],
+            ["cast", "--peer", "AA:BB:CC:DD:EE:FF", "--monitor", "DP-1", "--fps", "121"],
+            ["cast", "--peer", "AA:BB:CC:DD:EE:FF", "--monitor", "DP-1", "--timeout", "31"],
+            ["scan", "--timeout", "0"],
+            ["scan", "--timeout", "x"],
+            ["scan", "extra"],
+            ["nothing"],
+            [],
+        ):
             with self.subTest(args=args):
                 result = self.run_bridge(*args)
                 self.assertEqual(result.returncode, 2)
@@ -355,15 +460,20 @@ class Bridge(unittest.TestCase):
         bridge.send_signal(signal.SIGTERM)
         stdout, _ = bridge.communicate(timeout=10)
         # The escalation reaches FluxCast's whole process group.
-        self.assertEqual(self.lines("signal"), [["signal", str(int(signal.SIGINT))], ["signal", str(int(signal.SIGTERM))]])
+        self.assertEqual(
+            self.lines("signal"), [["signal", str(int(signal.SIGINT))], ["signal", str(int(signal.SIGTERM))]]
+        )
         self.wait_for("grandchild")
         self.assertEqual(bridge.returncode, 0)
-        self.assertEqual(self.events(stdout), [
-            {"type": "phase", "phase": "starting", "detail": "Preparing FluxCast"},
-            {"type": "phase", "phase": "stopping", "detail": "Stopping the cast cleanly"},
-            {"type": "phase", "phase": "stopping", "detail": "Stopping the cast cleanly"},
-            {"type": "exit", "expected": True, "code": 0},
-        ])
+        self.assertEqual(
+            self.events(stdout),
+            [
+                {"type": "phase", "phase": "starting", "detail": "Preparing FluxCast"},
+                {"type": "phase", "phase": "stopping", "detail": "Stopping the cast cleanly"},
+                {"type": "phase", "phase": "stopping", "detail": "Stopping the cast cleanly"},
+                {"type": "exit", "expected": True, "code": 0},
+            ],
+        )
 
     def test_fluxcast_stops_when_the_bridge_is_killed(self):
         # Quickshell destroys a running Process with SIGKILL, which the bridge
@@ -381,13 +491,24 @@ class Bridge(unittest.TestCase):
         # signal) and stops FluxCast through the normal path.
         events = self.directory / "events.jsonl"
         parent = subprocess.Popen(
-            [sys.executable, "-I", "-c",
-             "import subprocess, sys, time\n"
-             "with open(sys.argv[1], 'w') as out:\n"
-             "    subprocess.Popen(sys.argv[2:], stdout=out)\n"
-             "time.sleep(60)\n",
-             str(events), *helper(), "cast", "--peer", "AA:BB:CC:DD:EE:FF", "--monitor", "DP-1"],
-            env=dict(self.env, FAKE_MODE="hold"))
+            [
+                sys.executable,
+                "-I",
+                "-c",
+                "import subprocess, sys, time\n"
+                "with open(sys.argv[1], 'w') as out:\n"
+                "    subprocess.Popen(sys.argv[2:], stdout=out)\n"
+                "time.sleep(60)\n",
+                str(events),
+                *helper(),
+                "cast",
+                "--peer",
+                "AA:BB:CC:DD:EE:FF",
+                "--monitor",
+                "DP-1",
+            ],
+            env=dict(self.env, FAKE_MODE="hold"),
+        )
         self.processes.append(parent)
         self.wait_for("ready")
         parent.kill()

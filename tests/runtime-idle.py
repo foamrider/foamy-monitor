@@ -17,6 +17,7 @@ the installed /usr/share/omarchy/shell.
 Exits 1 when more than --max-idle-spawns processes start in the idle window
 (the regression check; default 0).
 """
+
 import argparse
 import os
 import sys
@@ -29,14 +30,18 @@ import fakebin  # noqa: E402
 
 
 def kit_preview(plugin):
-    for candidate in (os.environ.get("FOAMY_KIT"), plugin.parent / "foamy-kit", HERE.parents[1] / "foamy-kit",
-                      Path.home() / "GitHub/Personal/foamy-kit"):
+    for candidate in (
+        os.environ.get("FOAMY_KIT"),
+        plugin.parent / "foamy-kit",
+        HERE.parents[1] / "foamy-kit",
+        Path.home() / "GitHub/Personal/foamy-kit",
+    ):
         if candidate and (Path(candidate) / "preview/harness.py").is_file():
             return Path(candidate) / "preview"
     raise SystemExit("foamy-kit not found (set FOAMY_KIT)")
 
 
-SHELL = '''import QtQuick
+SHELL = """import QtQuick
 import Quickshell
 import qs.Commons
 import qs.Ui
@@ -58,13 +63,13 @@ ShellRoot {
   }
   Component.onCompleted: console.log("FOAMY READY")
 }
-'''
+"""
 
-CONFIG = '''local omarchy_monitor_scale = "auto"
+CONFIG = """local omarchy_monitor_scale = "auto"
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
 local omarchy_gdk_scale = 2
 hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
-'''
+"""
 
 
 def cpu_seconds(pid):
@@ -113,8 +118,9 @@ def main():
         log = run.base / "calls.log"
         # The fakes first, then the harness's PATH: any other omarchy-* command
         # is a stub that exits 127 and is logged (Run.host_commands()).
-        run.env.update({"PATH": f"{fake}:{run.env['PATH']}", "FOAMY_CALLS": str(log),
-                        "FOAMY_INSTANCES": str(args.instances)})
+        run.env.update(
+            {"PATH": f"{fake}:{run.env['PATH']}", "FOAMY_CALLS": str(log), "FOAMY_INSTANCES": str(args.instances)}
+        )
         run.start()
         try:
             # Warm-up: the panels loaded and the startup status (and anything
@@ -139,19 +145,29 @@ def main():
         used = end_cpu - start_cpu
         startup = calls(log)[:start_calls]
         print(f"plugin {plugin} host 4.5, {args.instances} instances, idle window {args.seconds:.0f} s")
-        print(f"startup calls: {len(startup)}  ({', '.join(sorted(set(c.split(chr(9))[0] + ' ' + (c.split(chr(9))[2] if len(c.split(chr(9))) > 2 and c.startswith('python3') else '') for c in startup)))})")
+        print(
+            f"startup calls: {len(startup)}  ({', '.join(sorted(set(c.split(chr(9))[0] + ' ' + (c.split(chr(9))[2] if len(c.split(chr(9))) > 2 and c.startswith('python3') else '') for c in startup)))})"
+        )
         print(f"idle calls: {len(window)}  idle CPU: {used:.2f} s = {100 * used / args.seconds:.2f} % of one core")
         kinds = {}
         for line in window:
             parts = line.split("\t")
-            key = parts[0] + (" " + Path(parts[1].split()[0]).name + " " + " ".join(parts[1].split()[1:2]) if parts[0] == "python3" else "")
+            key = parts[0] + (
+                " " + Path(parts[1].split()[0]).name + " " + " ".join(parts[1].split()[1:2])
+                if parts[0] == "python3"
+                else ""
+            )
             kinds[key] = kinds.get(key, 0) + 1
         for key, count in sorted(kinds.items()):
             print(f"  {count:5d}  {key}")
         brightness = [c for c in startup if c.startswith("omarchy-brightness-display")]
         print(f"startup brightness probes: {len(brightness)}")
         spawned = len(window)
-        failures = [line for line in (run.base / "qs.log").read_text().splitlines() if "TypeError" in line or "ReferenceError" in line]
+        failures = [
+            line
+            for line in (run.base / "qs.log").read_text().splitlines()
+            if "TypeError" in line or "ReferenceError" in line
+        ]
         failures += [f"ran a host command: {line}" for line in run.host_commands()]
         for line in failures[:10]:
             print("  qml: " + line)

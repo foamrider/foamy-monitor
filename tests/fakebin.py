@@ -6,6 +6,7 @@ Each fake is a small script written into a temporary bin directory. They log
 every call to $FOAMY_CALLS and never touch the
 live session, displays or DDC buses.
 """
+
 import json
 import stat
 from pathlib import Path
@@ -15,20 +16,34 @@ def monitors(count):
     rows = []
     for index in range(count):
         name = "eDP-1" if index == 0 else f"DP-{index}"
-        rows.append({
-            "id": index, "name": name, "description": f"Foamy Test {name}",
-            "make": "Foamy", "model": f"Test {index}", "serial": f"S{index}",
-            "width": 1920, "height": 1080, "refreshRate": 60.0, "x": index * 1920, "y": 0,
-            "scale": 1.0, "transform": 0, "disabled": False, "focused": index == 0,
-            "mirrorOf": "none", "availableModes": ["1920x1080@60.00Hz", "1280x720@60.00Hz"],
-        })
+        rows.append(
+            {
+                "id": index,
+                "name": name,
+                "description": f"Foamy Test {name}",
+                "make": "Foamy",
+                "model": f"Test {index}",
+                "serial": f"S{index}",
+                "width": 1920,
+                "height": 1080,
+                "refreshRate": 60.0,
+                "x": index * 1920,
+                "y": 0,
+                "scale": 1.0,
+                "transform": 0,
+                "disabled": False,
+                "focused": index == 0,
+                "mirrorOf": "none",
+                "availableModes": ["1920x1080@60.00Hz", "1280x720@60.00Hz"],
+            }
+        )
     return rows
 
 
-LOGGER = '''import os, sys, time
+LOGGER = """import os, sys, time
 with open(os.environ["FOAMY_CALLS"], "a") as log:
     log.write("\\t".join([os.path.basename(sys.argv[0])] + sys.argv[1:]) + "\\n")
-'''
+"""
 
 
 def write(directory, count=3, brightness=50):
@@ -36,7 +51,8 @@ def write(directory, count=3, brightness=50):
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "monitors.json").write_text(json.dumps(monitors(count)))
     scripts = {
-        "hyprctl": LOGGER + '''
+        "hyprctl": LOGGER
+        + """
 args = sys.argv[1:]
 if args[:1] == ["monitors"]:
     # Read the outputs first, then take the configured time to answer: a change
@@ -50,8 +66,9 @@ elif args[:1] == ["configerrors"]:
     pass
 elif args[:1] in (["eval"], ["reload"], ["setcursor"]):
     print("ok")
-''',
-        "omarchy-brightness-display": LOGGER + '''
+""",
+        "omarchy-brightness-display": LOGGER
+        + """
 hang = os.environ["FOAMY_CALLS"] + ".ddchang"
 if os.path.exists(hang):
     # A wedged DDC bus: never answers and ignores SIGTERM. Its pid goes to
@@ -79,19 +96,21 @@ if any(a.endswith("%") for a in sys.argv[1:]):
         out.write(sys.argv[-1].rstrip("%"))
     sys.exit(0)
 print(open(level).read().strip() if os.path.exists(level) else "%d" % BRIGHTNESS)
-''',
+""",
         "gsettings": LOGGER + 'print("24" if "cursor-size" in sys.argv else "\'Adwaita\'")\n',
-        "omarchy-display-text-size": LOGGER + '''
+        "omarchy-display-text-size": LOGGER
+        + """
 if os.path.exists(os.environ["FOAMY_CALLS"] + ".textfail"):
     sys.stderr.write("text size refused\\n")
     sys.exit(1)
-''',
+""",
         # FluxCast double: a scan that runs until stopped, logging the signal.
         # With $FOAMY_CALLS.peers present a scan instead finishes after
         # $FOAMY_CALLS.scandelay seconds (default 0.8) and prints those peers
         # (FluxCast's "[n] MAC name via source" lines). With
         # $FOAMY_CALLS.stubborn present it ignores SIGINT.
-        "fluxcast": LOGGER + '''
+        "fluxcast": LOGGER
+        + """
 import signal
 def stop(number, _frame):
     with open(os.environ["FOAMY_CALLS"], "a") as log:
@@ -112,11 +131,11 @@ if "--wfd-scan" in sys.argv and os.path.exists(peers):
     print(open(peers).read(), flush=True)
     sys.exit(0)
 time.sleep(30)
-''',
-        "python3": '''#!/bin/sh
+""",
+        "python3": """#!/bin/sh
 printf 'python3\\t%s\\n' "$*" >> "$FOAMY_CALLS"
 exec /usr/bin/python3 "$@"
-''',
+""",
     }
     for name, body in scripts.items():
         path = directory / name

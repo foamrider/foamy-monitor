@@ -9,6 +9,7 @@ overlapped, and that the teardown stopped FluxCast.
 FOAMY_KIT (default ~/GitHub/Personal/foamy-kit) provides the harness.
 The host is Omarchy 4.5: FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else
 the installed /usr/share/omarchy/shell."""
+
 import json
 import os
 from pathlib import Path
@@ -30,11 +31,11 @@ if not os.environ.get("FOAMY_HOST_45"):
 sys.path.insert(0, str(KIT / "preview"))
 import harness  # noqa: E402
 
-CONFIG = '''local omarchy_monitor_scale = "auto"
+CONFIG = """local omarchy_monitor_scale = "auto"
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
 local omarchy_gdk_scale = 2
 hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
-'''
+"""
 
 
 def ipc_status(run):
@@ -45,8 +46,13 @@ def ipc_status(run):
     ids = harness.wait_for(lambda: [p.name for p in by_id.iterdir()] if by_id.is_dir() else [], 10)
     if not ids:
         return None
-    result = subprocess.run(["qs", "ipc", "-i", ids[0], "call", "foamy.monitor", "status"], env=run.env,
-                            capture_output=True, text=True, timeout=10)
+    result = subprocess.run(
+        ["qs", "ipc", "-i", ids[0], "call", "foamy.monitor", "status"],
+        env=run.env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
     return result.stdout.strip() if result.returncode == 0 else None
 
 
@@ -69,8 +75,13 @@ def run(host, lang):
     calls = r.base / "calls.log"
     # The fakes first, then the harness's PATH: any other omarchy-* command
     # is a stub that exits 127 and is logged (Run.host_commands()).
-    r.env.update(FOAMY_LANG=lang, FOAMY_HOLD_MS="500", PATH=f"{fake}:{r.env['PATH']}", FOAMY_CALLS=str(calls),
-                 FOAMY_FAKEBIN=str(fake))
+    r.env.update(
+        FOAMY_LANG=lang,
+        FOAMY_HOLD_MS="500",
+        PATH=f"{fake}:{r.env['PATH']}",
+        FOAMY_CALLS=str(calls),
+        FOAMY_FAKEBIN=str(fake),
+    )
     r.start()
     try:
         status = ipc_status(r)
@@ -78,8 +89,12 @@ def run(host, lang):
     finally:
         r.stop()
     log = r.log
-    result = next((line.split("FOAMY RESULT ", 1)[1] for line in log.splitlines() if "FOAMY RESULT" in line), "no result")
-    failures = [line for line in log.splitlines() if "FOAMY FAIL" in line or any(m in line for m in harness.FAILURE_MARKERS)]
+    result = next(
+        (line.split("FOAMY RESULT ", 1)[1] for line in log.splitlines() if "FOAMY RESULT" in line), "no result"
+    )
+    failures = [
+        line for line in log.splitlines() if "FOAMY FAIL" in line or any(m in line for m in harness.FAILURE_MARKERS)
+    ]
     try:
         leader = status is not None and json.loads(status).get("leader") is True
     except ValueError:
@@ -99,8 +114,10 @@ def run(host, lang):
     elif Path("/proc", hang_pid.read_text().strip()).exists():
         failures.append("the hung brightness command outlived its deadline")
     ok = "FOAMY DONE" in log and not failures and leader
-    print(f"{'PASS' if ok else 'FAIL'} runtime {host} {lang}: {result}; ipc status from leader: {leader}; "
-          f"{jobs} brightness jobs, max {depth} at once; FluxCast stopped: {stopped}")
+    print(
+        f"{'PASS' if ok else 'FAIL'} runtime {host} {lang}: {result}; ipc status from leader: {leader}; "
+        f"{jobs} brightness jobs, max {depth} at once; FluxCast stopped: {stopped}"
+    )
     if not ok:
         print("\n".join("    " + line for line in (failures or log.splitlines()[-40:])))
         print(f"    log kept at {r.base}")
