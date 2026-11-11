@@ -84,6 +84,8 @@
   "Could not set brightness": "Could not set brightness",
   "Could not update advanced settings": "Could not update advanced settings",
   "Wireless display scan failed": "Wireless display scan failed",
+  "Could not read the FluxCast scan": "Could not read the FluxCast scan",
+  "Cast ended (%1)": "Cast ended (%1)",
   "Please install %1": "Please install %1",
   "Could not read display settings: %1": "Could not read display settings: %1",
   "Unsupported scale for %1": "Unsupported scale for %1",

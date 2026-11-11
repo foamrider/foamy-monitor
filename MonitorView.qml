@@ -86,14 +86,18 @@ PanelKeyCatcher {
 
   // ---- Strings ------------------------------------------------------------
   function tr(text, values) {
-    // Helpers return English recovery messages plus opaque package/monitor details.
-    // Translate only known prefixes; never interpret or translate the detail itself.
+    // Helpers return English recovery messages plus opaque package/monitor
+    // details (and the service a cast's exit code). Translate only these
+    // known templates; never interpret or translate the detail (%1) itself.
     if (values === undefined) {
-      var prefixes = ["Please install ", "Could not read display settings: ",
-        "Unsupported scale for ", "Unsupported resolution or refresh rate for "]
-      for (var i = 0; i < prefixes.length; i++) {
-        if (String(text).indexOf(prefixes[i]) === 0)
-          return FoamyI18n.t(prefixes[i] + "%1", String(text).slice(prefixes[i].length))
+      var templates = ["Please install %1", "Could not read display settings: %1",
+        "Unsupported scale for %1", "Unsupported resolution or refresh rate for %1", "Cast ended (%1)"]
+      var whole = String(text)
+      for (var i = 0; i < templates.length; i++) {
+        var parts = templates[i].split("%1")
+        if (whole.length > parts[0].length + parts[1].length && whole.indexOf(parts[0]) === 0
+            && whole.slice(whole.length - parts[1].length) === parts[1])
+          return FoamyI18n.t(templates[i], whole.slice(parts[0].length, whole.length - parts[1].length))
       }
     }
     return FoamyI18n.t(text, values)

@@ -84,6 +84,8 @@
   "Could not set brightness": "Kunne ikke endre lysstyrken",
   "Could not update advanced settings": "Kunne ikke oppdatere de avanserte innstillingene",
   "Wireless display scan failed": "Søk etter trådløse skjermer mislyktes",
+  "Could not read the FluxCast scan": "Kunne ikke lese FluxCast-søket",
+  "Cast ended (%1)": "Delingen ble avsluttet (%1)",
   "Please install %1": "Installer %1",
   "Could not read display settings: %1": "Kunne ikke lese skjerminnstillingene: %1",
   "Unsupported scale for %1": "Skaleringen støttes ikke for %1",
