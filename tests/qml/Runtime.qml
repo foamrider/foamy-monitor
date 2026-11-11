@@ -96,8 +96,26 @@ ShellRoot {
       && service.statePath !== "" && displayIdle()
   }, "the startup status", stepOne)
 
+  // The trial worker's phase change, written to the helper's state file. A
+  // "testing" phase gets a stand-in worker (a process whose command line
+  // holds `worker --token runtime-trial`, as the helper checks); "dead"
+  // writes a testing phase whose worker is gone; "idle" ends the stand-in.
   function setPhase(phase, then) {
-    sh("python3 - '" + service.statePath + "' " + phase + " <<'PY'\nimport json, sys, time\np, phase = sys.argv[1], sys.argv[2]\ns = json.load(open(p))\ns.update(phase=phase, deadline=time.time() + 15 if phase == 'testing' else 0, token='runtime-trial')\ns['revision'] = s.get('revision', 0) + 1\njson.dump(s, open(p, 'w'))\nPY", then)
+    sh("python3 - '" + service.statePath + "' " + phase + " <<'PY'\n"
+      + "import json, os, signal, subprocess, sys, time\n"
+      + "p, phase = sys.argv[1], sys.argv[2]\n"
+      + "s = json.load(open(p))\n"
+      + "if s.get('workerPid'):\n"
+      + "    try: os.kill(s['workerPid'], signal.SIGKILL)\n"
+      + "    except OSError: pass\n"
+      + "s.update(phase='testing' if phase == 'dead' else phase, deadline=time.time() + 15 if phase != 'idle' else 0, token='runtime-trial', workerPid=0)\n"
+      + "if phase == 'dead':\n"
+      + "    s['snapshot'] = s.get('base', [])\n"
+      + "if phase == 'testing':\n"
+      + "    s['workerPid'] = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)', 'worker', '--token', 'runtime-trial'], start_new_session=True).pid\n"
+      + "s['revision'] = s.get('revision', 0) + 1\n"
+      + "json.dump(s, open(p, 'w'))\n"
+      + "PY", then)
   }
   function leaderPanel() {
     for (var i = 0; i < panelCount; i++) if (panel(i).member.isLeader) return panel(i)
@@ -429,6 +447,17 @@ ShellRoot {
   }
   function trialC() {
     eq(shell.service.testing, false, "trial over")
+    // A trial whose worker is gone (killed, crashed): the busy poll's next
+    // status reverts it and says so, in the popup's language.
+    shell.setPhase("dead", function() {
+      until(function() { return shell.service.transaction.error !== "" && !shell.service.busy && displayIdle() }, "the dead trial's recovery", trialD)
+    })
+  }
+  function trialD() {
+    eq(shell.service.transaction.phase, "idle", "a dead trial goes idle")
+    var view = shell.leaderPanel().popup.bodyItem
+    eq(view.tr(view.actionError), shell.lang === "no" ? "Skjermtesten stoppet uventet. De forrige innstillingene ble gjenopprettet."
+      : "The display test stopped unexpectedly. The previous settings were restored.", "the recovery says so")
     shell.leaderPanel().close()
     until(function() { return !shell.service.scanning }, "the scan to stop with the last popup", wifiA)
   }

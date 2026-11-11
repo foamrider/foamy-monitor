@@ -78,6 +78,7 @@
   "monitors.lua must be a machine-local file outside Stow": "monitors.lua must be a machine-local file outside Stow",
   "Fix Hyprland configuration errors before saving": "Fix Hyprland configuration errors before saving",
   "This display test has ended": "This display test has ended",
+  "The display test stopped unexpectedly. The previous settings were restored.": "The display test stopped unexpectedly. The previous settings were restored.",
   "This plugin's helper isn't available for this CPU.": "This plugin's helper isn't available for this CPU.",
   "Could not read GTK scale": "Could not read GTK scale",
   "Could not set brightness": "Could not set brightness",

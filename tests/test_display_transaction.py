@@ -18,6 +18,7 @@ import os
 import platform
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -860,6 +861,97 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(result["state"]["error"], "")
         self.assertEqual(json.loads(self.displays.read_text())[0]["scale"], 1)
         self.assertEqual(json.loads(self.gtk_environment.read_text()), dict(compositor="1", systemd="1", dbus="1"))
+
+    # A worker that dies without its own revert (SIGKILL, the OOM killer, a
+    # crash) left the trial active for good: the displays stayed on the trial
+    # settings and every edit answered "A display test is already running".
+    # The next command now finds the worker gone and runs the revert itself.
+    RECOVERED = "The display test stopped unexpectedly. The previous settings were restored."
+
+    def kill_worker(self, pid):
+        os.kill(pid, signal.SIGKILL)
+        for _ in range(100):
+            try:
+                if "zombie" in Path(f"/proc/{pid}/status").read_text():
+                    return
+            except FileNotFoundError:
+                return
+            time.sleep(0.05)
+        self.fail(f"worker {pid} did not die")
+
+    def edit_state(self, result, **changes):
+        path = Path(result["statePath"])
+        state = json.loads(path.read_text())
+        state.update(changes)
+        path.write_text(json.dumps(state))
+
+    def test_killed_worker_is_reverted_by_the_next_command(self):
+        state = self.start()["state"]
+        self.assertEqual(json.loads(self.displays.read_text())[0]["scale"], 1.25)
+        self.kill_worker(state["workerPid"])
+        result = self.call("status")
+        self.assertEqual(result["state"]["phase"], "idle")
+        self.assertEqual(result["state"]["error"], self.RECOVERED)
+        self.assertEqual(result["state"]["deadline"], 0)
+        self.assertEqual(json.loads(self.displays.read_text())[0]["scale"], 1)
+        self.assertEqual(result["live"][0]["scale"], 1)
+        self.assertEqual(self.config.read_text(), self.original)
+        self.assertEqual(json.loads(self.gtk_environment.read_text()), dict(compositor="1", systemd="1", dbus="1"))
+        self.assertEqual(result["gtkScale"]["value"], 1)
+        self.assertFalse(self.call("keep", {"token": self.token})["ok"])
+        # Editing works again, and the recovery ran once.
+        ident = result["state"]["draft"][0]["id"]
+        patched = self.call("patch", {"id": ident, "changes": {"scale": 1.5}})
+        self.assertTrue(patched["ok"], patched)
+        self.assertEqual(patched["state"]["error"], "")
+        self.assertEqual(self.c.calls.read_text().count("hyprctl\treload"), 0)
+
+    def test_worker_killed_while_saving_restores_monitors_lua(self):
+        result = self.start()
+        self.kill_worker(result["state"]["workerPid"])
+        # As if it died right after writing the new monitors.lua.
+        saved = self.c.state_file(result)
+        self.config.write_text(saved["configAfter"])
+        self.edit_state(result, phase="saving")
+        reply = self.call("status")
+        self.assertEqual(reply["state"]["phase"], "idle")
+        self.assertEqual(reply["state"]["error"], self.RECOVERED)
+        self.assertEqual(self.config.read_text(), self.original)
+        self.assertIn("hyprctl\treload\n", self.c.calls.read_text())
+        self.assertEqual(json.loads(self.displays.read_text())[0]["scale"], 1)
+
+    def test_worker_killed_after_an_external_config_edit_keeps_the_edit(self):
+        result = self.start()
+        self.kill_worker(result["state"]["workerPid"])
+        changed = self.original + "-- edited elsewhere\n"
+        self.config.write_text(changed)
+        reply = self.call("status")
+        self.assertEqual(reply["state"]["phase"], "idle")
+        self.assertEqual(self.config.read_text(), changed)
+        self.assertEqual(json.loads(self.displays.read_text())[0]["scale"], 1)
+
+    def test_a_recycled_worker_pid_does_not_hold_the_trial(self):
+        result = self.start()
+        self.kill_worker(result["state"]["workerPid"])
+        # The pid now names another live process of this user.
+        other = subprocess.Popen(["sleep", "30"])
+        try:
+            self.edit_state(result, workerPid=other.pid)
+            reply = self.call("status")
+            self.assertEqual(reply["state"]["phase"], "idle")
+            self.assertEqual(reply["state"]["error"], self.RECOVERED)
+            self.assertIsNone(other.poll(), "the other process is left alone")
+        finally:
+            other.kill()
+            other.wait()
+
+    def test_a_live_worker_keeps_its_trial(self):
+        state = self.start()["state"]
+        for _ in range(3):
+            self.assertEqual(self.call("status")["state"]["phase"], "testing")
+        self.assertEqual(Path(f"/proc/{state['workerPid']}").exists(), True)
+        self.assertTrue(self.call("revert", {"token": self.token})["ok"])
+        self.assertEqual(self.wait_phase("idle")["state"]["error"], "")
 
     def test_keep_persists_description_and_readback_then_revert_stays_temporary(self):
         self.start()

@@ -743,16 +743,16 @@ fn worker(store: &Store, token: &str) -> Result<(), String> {
     }
     let snapshot = monitors(get(&state, "snapshot"), "The trial's snapshot")?;
     let proposed = monitors(get(&state, "draft"), "The trial's draft")?;
-    let config_before = py::to_str(get(&state, "configBefore"));
-    let config_after = py::to_str(get(&state, "configAfter"));
-    let gtk = get(&state, "gtkScale")
-        .as_object()
-        .cloned()
-        .unwrap_or_default();
-    let (gtk_base, gtk_value) = (get(&gtk, "base").clone(), get(&gtk, "value").clone());
-    let gtk_changed = !py::eq(&gtk_base, &gtk_value);
-    let old_environment = get(&state, "gtkEnvironmentBefore").clone();
-    let monitor_changes = state.get("monitorChanges").is_none_or(py::truthy);
+    let plan = Trial::of(&state);
+    let Trial {
+        config_before,
+        config_after,
+        gtk_value,
+        monitor_changes,
+        ..
+    } = &plan;
+    let monitor_changes = *monitor_changes;
+    let gtk_changed = plan.gtk_changed();
     let config = config_path();
     let backup = store.directory.join("monitors.lua.backup");
     let mut applied_gtk = false;
@@ -767,7 +767,7 @@ fn worker(store: &Store, token: &str) -> Result<(), String> {
         if gtk_changed {
             // Runtime-only until Keep; mark first so partial failures also restore it.
             applied_gtk = true;
-            apply_gtk_scale(&gtk_value)?;
+            apply_gtk_scale(gtk_value)?;
         }
         let deadline = Instant::now() + TRIAL;
         {
@@ -794,7 +794,7 @@ fn worker(store: &Store, token: &str) -> Result<(), String> {
                 break;
             }
             wait_verified(&proposed, 1)?;
-            if read_text(&config)? != config_before {
+            if read_text(&config)? != *config_before {
                 return Err("monitors.lua changed during the test; try again".into());
             }
             {
@@ -823,7 +823,7 @@ fn worker(store: &Store, token: &str) -> Result<(), String> {
             if gtk_changed {
                 state.insert(
                     "gtkScale".into(),
-                    json!({"base": gtk_value, "value": gtk_value}),
+                    json!({"base": gtk_value.clone(), "value": gtk_value.clone()}),
                 );
             }
             store.write(&mut state)?;
@@ -843,12 +843,69 @@ fn worker(store: &Store, token: &str) -> Result<(), String> {
         state.insert("phase".into(), "reverting".into());
         store.write(&mut state)?;
     }
+    revert(
+        &plan,
+        &snapshot,
+        wrote_config,
+        applied_gtk,
+        &backup,
+        &mut reason,
+    );
+    let _lock = store.lock("state.lock")?;
+    let mut state = store.read()?;
+    end_trial(&mut state, &plan, &snapshot, &reason);
+    store.write(&mut state)
+}
+
+/// What a trial changed and how to undo it, from its state.
+struct Trial {
+    config_before: String,
+    config_after: String,
+    gtk_base: Value,
+    gtk_value: Value,
+    environment_before: Value,
+    monitor_changes: bool,
+}
+
+impl Trial {
+    fn of(state: &State) -> Trial {
+        let gtk = get(state, "gtkScale")
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
+        Trial {
+            config_before: py::to_str(get(state, "configBefore")),
+            config_after: py::to_str(get(state, "configAfter")),
+            gtk_base: get(&gtk, "base").clone(),
+            gtk_value: get(&gtk, "value").clone(),
+            environment_before: get(state, "gtkEnvironmentBefore").clone(),
+            monitor_changes: state.get("monitorChanges").is_none_or(py::truthy),
+        }
+    }
+
+    fn gtk_changed(&self) -> bool {
+        !py::eq(&self.gtk_base, &self.gtk_value)
+    }
+}
+
+/// The revert: monitors.lua back to configBefore if the trial wrote it and it
+/// still holds what the trial wrote, the displays back to the snapshot, the
+/// GTK scale back to its base. What failed is appended to `reason`.
+fn revert(
+    trial: &Trial,
+    snapshot: &[Monitor],
+    wrote_config: bool,
+    applied_gtk: bool,
+    backup: &Path,
+    reason: &mut String,
+) {
+    let config = config_path();
     let restored = (|| -> Result<(), String> {
         if wrote_config {
-            if read_text(&config)? == config_after {
-                write_atomic(&config, config_before.as_bytes(), mode_of(&config)?)
+            if read_text(&config)? == trial.config_after {
+                write_atomic(&config, trial.config_before.as_bytes(), mode_of(&config)?)
                     .map_err(|e| e.to_string())?;
-                reload_config(monitor_changes)?;
+                reload_config(trial.monitor_changes)?;
             } else {
                 reason.push_str(&format!(
                     " Configuration changed externally; its backup is in {}",
@@ -856,31 +913,100 @@ fn worker(store: &Store, token: &str) -> Result<(), String> {
                 ));
             }
         }
-        if monitor_changes {
-            rollback(&snapshot)?;
+        if trial.monitor_changes {
+            rollback(snapshot)?;
         }
         Ok(())
     })();
     if let Err(error) = restored {
         reason.push_str(&format!(" Could not restore displays: {error}"));
     }
-    if applied_gtk && let Err(error) = restore_gtk_scale(&gtk_base, &old_environment) {
+    if applied_gtk && let Err(error) = restore_gtk_scale(&trial.gtk_base, &trial.environment_before)
+    {
         reason.push_str(&format!(" Could not restore GTK scale: {error}"));
     }
-    let _lock = store.lock("state.lock")?;
-    let mut state = store.read()?;
+}
+
+/// The state after a revert: idle on the snapshot, with `reason` as its error.
+fn end_trial(state: &mut State, trial: &Trial, snapshot: &[Monitor], reason: &str) {
     state.insert("phase".into(), "idle".into());
-    state.insert("base".into(), to_value(&snapshot));
-    state.insert("draft".into(), to_value(&snapshot));
-    state.insert("error".into(), py::strip(&reason).into());
+    state.insert("base".into(), to_value(snapshot));
+    state.insert("draft".into(), to_value(snapshot));
+    state.insert("error".into(), py::strip(reason).into());
     state.insert("deadline".into(), 0.into());
-    if gtk_changed {
+    if trial.gtk_changed() {
         state.insert(
             "gtkScale".into(),
-            json!({"base": gtk_base, "value": gtk_base}),
+            json!({"base": trial.gtk_base, "value": trial.gtk_base}),
         );
     }
-    store.write(&mut state)
+}
+
+/// Whether the trial's detached worker still runs: `workerPid` names a
+/// process whose command line still holds this trial's `worker --token
+/// <token>`. A pid that is gone has no /proc entry, a zombie has an empty
+/// command line, and a recycled pid runs something else (the token is 128
+/// random bits). Under qemu-user the emulator's own arguments come first, so
+/// the three arguments are looked for anywhere in it.
+fn worker_alive(state: &State) -> bool {
+    let (Some(pid), Some(token)) = (
+        get(state, "workerPid").as_u64(),
+        get(state, "token").as_str(),
+    ) else {
+        return false;
+    };
+    let Ok(cmdline) = read_file_limited(Path::new(&format!("/proc/{pid}/cmdline")), 64 << 10)
+    else {
+        return false;
+    };
+    let args: Vec<&[u8]> = cmdline.split(|byte| *byte == 0).collect();
+    args.windows(3)
+        .any(|w| w[0] == b"worker" && w[1] == b"--token" && w[2] == token.as_bytes())
+}
+
+/// A trial whose worker died without reverting (SIGKILL, the OOM killer, a
+/// crash) stayed active for good: the displays kept the trial settings and
+/// every edit answered "already running". When the worker is gone and
+/// trial.lock is free (the worker holds it from its start; the pid covers
+/// the moment before it takes it), its revert runs here, under state.lock.
+fn recover_dead_trial(store: &Store, state: &mut State) -> Result<(), String> {
+    if !active(state) || worker_alive(state) {
+        return Ok(());
+    }
+    let Some(_trial) =
+        FileLock::try_exclusive(&store.directory.join("trial.lock")).map_err(|e| e.to_string())?
+    else {
+        return Ok(());
+    };
+    let mut trial = Trial::of(state);
+    let mut problems = String::new();
+    let snapshot =
+        monitors(get(state, "snapshot"), "The trial's snapshot").unwrap_or_else(|error| {
+            // Nothing to roll back to: the next status reads the outputs as they are.
+            problems.push_str(&format!(" {error}"));
+            trial.monitor_changes = false;
+            Vec::new()
+        });
+    // The worker may or may not have written monitors.lua (it does on Keep):
+    // restore it only while it holds exactly what the trial wrote.
+    let config = read_text(&config_path()).unwrap_or_default();
+    let wrote_config = trial.config_after != trial.config_before && config == trial.config_after;
+    let backup = store.directory.join("monitors.lua.backup");
+    revert(
+        &trial,
+        &snapshot,
+        wrote_config,
+        trial.gtk_changed(),
+        &backup,
+        &mut problems,
+    );
+    let reason = if problems.is_empty() {
+        "The display test stopped unexpectedly. The previous settings were restored.".to_owned()
+    } else {
+        format!("The display test stopped unexpectedly.{problems}")
+    };
+    end_trial(state, &trial, &snapshot, &reason);
+    store.write(state)
 }
 
 fn patch(state: &mut State, request: &Value) -> Result<(), String> {
@@ -1039,6 +1165,7 @@ fn read_request() -> Result<Value, String> {
 fn command(store: &Store, action: &str, request: &Value) -> Result<Value, String> {
     let _lock = store.lock("state.lock")?;
     let mut state = store.read()?;
+    recover_dead_trial(store, &mut state)?;
     let previous = Value::Object(state.clone());
     let live = live_monitors()?;
     reconcile(&mut state, &live)?;

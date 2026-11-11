@@ -76,6 +76,12 @@
 //!   the GTK scale and `GDK_SCALE` in the user environment (`systemctl
 //!   --user unset-environment GDK_SCALE` when it was unset; the previous
 //!   value came from `systemctl --user show-environment`).
+//! - A worker that died without reverting (SIGKILL, a crash): every action
+//!   first checks an active trial's `workerPid`. When /proc no longer shows
+//!   that pid running `worker --token <token>` and `trial.lock` is free,
+//!   the action runs the revert itself (monitors.lua only while it holds
+//!   `configAfter`), goes idle with the error "The display test stopped
+//!   unexpectedly. The previous settings were restored." and carries on.
 //!
 //! ## FluxCast bridge
 //!

@@ -83,7 +83,9 @@ display has no brightness control).
 - FluxCast stops when the plugin is disabled or removed, when the shell
   reloads, and when its helper is killed (it runs with a parent-death signal).
 - A display trial runs in its own detached process, so it still reverts on
-  its timeout when the shell reloads or quits mid-trial.
+  its timeout when the shell reloads or quits mid-trial. If that process is
+  killed (or crashes) before it reverts, the panel's next refresh restores
+  the previous settings and says so.
 
 ### monitors.lua
 
