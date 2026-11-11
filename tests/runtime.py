@@ -78,7 +78,7 @@ def run(host, lang):
                                stderr=subprocess.STDOUT, start_new_session=True)
     try:
         status = ipc_status(r)
-        process.wait(timeout=60)
+        process.wait(timeout=90)
     finally:
         if process.poll() is None:
             process.kill()
@@ -96,6 +96,12 @@ def run(host, lang):
         failures.append(f"brightness jobs overlapped (max {depth} at once, {jobs} jobs)")
     if not stopped:
         failures.append("FluxCast was not signalled by the teardown")
+    # The hung brightness command (fakebin ddchang) ran, and nothing of it is left.
+    hang_pid = Path(str(calls) + ".ddchang.pid")
+    if not hang_pid.exists():
+        failures.append("the hung brightness command never ran")
+    elif Path("/proc", hang_pid.read_text().strip()).exists():
+        failures.append("the hung brightness command outlived its deadline")
     ok = "FOAMY DONE" in log and not failures and leader
     print(f"{'PASS' if ok else 'FAIL'} runtime {host} {lang}: {result}; ipc status from leader: {leader}; "
           f"{jobs} brightness jobs, max {depth} at once; FluxCast stopped: {stopped}")

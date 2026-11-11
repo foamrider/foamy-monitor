@@ -309,6 +309,58 @@ ShellRoot {
       eq(shell.service.changeBrightness("eDP-1", { delta: 5 }, null), 0, "a step on a stale reading waits for a read")
       eq(shell.service.changeBrightness("eDP-1", { value: 40 }, null), 40, "an explicit level is written at once")
       eq(shell.service.brightnessAfterRead["eDP-1"], undefined, "and supersedes the waiting step")
+      hangA.start()
+    }
+  }
+
+  // ---- A hung DDC job (fake: $FOAMY_CALLS.ddchang, ignores SIGTERM) ----
+  // It ends at the deadline (SIGTERM, then SIGKILL 2 s later) and the
+  // brightness change queued behind it still lands.
+  Timer {
+    id: hangA
+    interval: 1200
+    onTriggered: {
+      eq(shell.service.brightness["DP-1"].percent, 45, "40 then +5 lands on 45, not the hardware level + 5")
+      eq(shell.service.brightness["eDP-1"].percent, 40, "the explicit level stays after the read lands")
+      eq(shell.service.brightnessAfterRead["eDP-1"], undefined, "no stale step left behind")
+      eq(Object.keys(shell.service._stepRequester).length, 0, "no requester kept after its step")
+      eq(shell.service.brightnessProc.running, false, "brightness queue idle before the hang")
+      shell.service.brightnessTimeoutSeconds = 1
+      shell.sh("touch \"$FOAMY_CALLS.ddchang\"")
+      hangB.start()
+    }
+  }
+  Timer {
+    id: hangB
+    interval: 300
+    onTriggered: {
+      var unknown = Object.assign({}, shell.service.brightness)
+      delete unknown["DP-1"]
+      shell.service.brightness = unknown
+      eq(shell.service.changeBrightness("DP-1", { delta: 5 }, null), 0, "a step on an unread display waits for its read")
+      hangC.start()
+    }
+  }
+  Timer {
+    id: hangC
+    interval: 600
+    onTriggered: {
+      eq(shell.service.brightnessProc.running, true, "the read hangs")
+      shell.sh("rm -f \"$FOAMY_CALLS.ddchang\"")
+      eq(shell.service.changeBrightness("eDP-1", { value: 30 }, null), 30, "a later level is accepted")
+      hangD.start()
+    }
+  }
+  Timer {
+    id: hangD
+    interval: 3500
+    onTriggered: {
+      eq(shell.service.brightnessProc.running, false, "the hung read ended at its deadline")
+      eq(shell.service.brightness["DP-1"].available, false, "a timed-out read is a failed read")
+      eq(Object.keys(shell.service.brightnessAfterRead).length, 0, "no step left waiting on the hung read")
+      eq(Object.keys(shell.service.brightnessWrites).length, 0, "the level queued behind it was written")
+      shell.service.brightnessTimeoutSeconds = 20
+      shell.service.readBrightness("eDP-1")
       lifeA.start()
     }
   }
@@ -316,12 +368,9 @@ ShellRoot {
   // ---- Per-view demand: popup close, a bar removed (unplug), hot-plug grace ----
   Timer {
     id: lifeA
-    interval: 1200
+    interval: 600
     onTriggered: {
-      eq(shell.service.brightness["DP-1"].percent, 45, "40 then +5 lands on 45, not the hardware level + 5")
-      eq(shell.service.brightness["eDP-1"].percent, 40, "the explicit level stays after the read lands")
-      eq(shell.service.brightnessAfterRead["eDP-1"], undefined, "no stale step left behind")
-      eq(Object.keys(shell.service._stepRequester).length, 0, "no requester kept after its step")
+      eq(shell.service.brightness["eDP-1"].available === true && shell.service.brightness["eDP-1"].percent, 30, "the written level reads back after the hang")
       // Popup close: Wireless demand and the search go with it.
       panel(0).open()
       panel(0).popup.bodyItem.setTab("Wireless")

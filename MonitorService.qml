@@ -278,41 +278,59 @@ Singleton {
       brightnessWrites = writes
       // A read queued before this write would only bring back an older level.
       brightnessReads = brightnessReads.filter(function(n) { return n !== job.name })
-      brightnessProc.command = ["omarchy-brightness-display", "--no-osd", "--monitor", job.name, job.value + "%"]
+      brightnessProc.command = brightnessDeadline().concat(["omarchy-brightness-display", "--no-osd", "--monitor", job.name, job.value + "%"])
     } else {
       brightnessReads = brightnessReads.filter(function(n) { return n !== job.name })
-      brightnessProc.command = ["omarchy-brightness-display", "--monitor", job.name]
+      brightnessProc.command = brightnessDeadline().concat(["omarchy-brightness-display", "--monitor", job.name])
     }
     brightnessProc.job = job
     brightnessProc.running = true
+  }
+  // One DDC job runs at a time, so a hung one (a wedged I2C bus, a monitor
+  // that stops answering) would block every later read and write. The
+  // slowest legitimate run is a cold write on an external display
+  // (omarchy-brightness-display-ddc): `ddcutil detect` over every I2C bus,
+  // then getvcp and setvcp, each retrying on a slow bus; seconds, not tens of
+  // them, and a run cut short caches no bus, so it would repeat. 20 s leaves
+  // that a wide margin. Past it `timeout` ends its whole process group
+  // (ddcutil included), SIGKILL 2 s after SIGTERM: a failed job (non-zero
+  // exit) like any other.
+  property int brightnessTimeoutSeconds: 20
+  function brightnessDeadline() { return ["timeout", "--kill-after=2s", brightnessTimeoutSeconds + "s"] }
+  // The one end of a brightness job: exited, or never started (Quickshell
+  // then emits no exited(), only running -> false). The job is taken first,
+  // so the running -> false that follows an exit finds nothing to finish.
+  function finishBrightness(code, started) {
+    var job = brightnessProc.job
+    if (!job) return
+    brightnessProc.job = null
+    if (job.kind === "write" && code) {
+      root.error = (started ? String(brightnessError.text).trim() : "") || "Could not set brightness"
+    } else if (job.kind === "read" && root.brightnessWrites[job.name] === undefined) {
+      root._store(job.name, Model.parseBrightness(code, brightnessOutput.text))
+      var change = root.brightnessAfterRead[job.name]
+      if (change) {
+        var after = Object.assign({}, root.brightnessAfterRead)
+        delete after[job.name]
+        root.brightnessAfterRead = after
+        // Take the requester first: the write below clears it with the queue.
+        var requester = root._stepRequester[job.name] || null
+        var requesters = Object.assign({}, root._stepRequester)
+        delete requesters[job.name]
+        root._stepRequester = requesters
+        var percent = root.changeBrightness(job.name, change, null)
+        root.brightnessStepped(requester, job.name, percent)
+      }
+    }
+    Qt.callLater(root.pumpBrightness)
   }
   property Timer brightnessDebounce: Timer { interval: 150; onTriggered: root.pumpBrightness() }
   property Process brightnessProc: Process {
     property var job: null
     stdout: StdioCollector { id: brightnessOutput; waitForEnd: true }
     stderr: StdioCollector { id: brightnessError; waitForEnd: true }
-    onExited: function(code) {
-      var job = root.brightnessProc.job
-      if (job && job.kind === "write" && code) {
-        root.error = String(brightnessError.text).trim() || "Could not set brightness"
-      } else if (job && job.kind === "read" && root.brightnessWrites[job.name] === undefined) {
-        root._store(job.name, Model.parseBrightness(code, brightnessOutput.text))
-        var change = root.brightnessAfterRead[job.name]
-        if (change) {
-          var after = Object.assign({}, root.brightnessAfterRead)
-          delete after[job.name]
-          root.brightnessAfterRead = after
-          // Take the requester first: the write below clears it with the queue.
-          var requester = root._stepRequester[job.name] || null
-          var requesters = Object.assign({}, root._stepRequester)
-          delete requesters[job.name]
-          root._stepRequester = requesters
-          var percent = root.changeBrightness(job.name, change, null)
-          root.brightnessStepped(requester, job.name, percent)
-        }
-      }
-      Qt.callLater(root.pumpBrightness)
-    }
+    onExited: function(code) { root.finishBrightness(code, true) }
+    onRunningChanged: if (!running) root.finishBrightness(127, false)
   }
 
   // ---- Advanced: text size, cursor size ------------------------------------
@@ -320,16 +338,20 @@ Singleton {
   readonly property bool advancedBusy: advancedProc.running
   function setCursorSize(value) {
     if (!active || advancedProc.running) return
-    advancedProc.command = ["bash", "-c", 'theme=$(gsettings get org.gnome.desktop.interface cursor-theme); theme=${theme//\'/}; gsettings set org.gnome.desktop.interface cursor-size "$1" && hyprctl setcursor "$theme" "$1"', "cursor-size", String(Number(value))]
+    advancedProc.command = advancedDeadline.concat(["bash", "-c", 'theme=$(gsettings get org.gnome.desktop.interface cursor-theme); theme=${theme//\'/}; gsettings set org.gnome.desktop.interface cursor-size "$1" && hyprctl setcursor "$theme" "$1"', "cursor-size", String(Number(value))])
     advancedProc.running = true
   }
   function setTextSize(value) {
     if (!active || advancedProc.running) return
-    advancedProc.command = ["omarchy-display-text-size", String(Number(value))]
+    advancedProc.command = advancedDeadline.concat(["omarchy-display-text-size", String(Number(value))])
     advancedProc.running = true
   }
+  // gsettings, hyprctl and the text-size script finish in well under a
+  // second; a stuck one (an unresponsive dconf or Hyprland socket) must not
+  // keep Advanced busy for good. `timeout` ends its whole process group.
+  readonly property var advancedDeadline: ["timeout", "--kill-after=1s", "10s"]
   property Process cursorInfoProc: Process {
-    command: ["gsettings", "get", "org.gnome.desktop.interface", "cursor-size"]
+    command: root.advancedDeadline.concat(["gsettings", "get", "org.gnome.desktop.interface", "cursor-size"])
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {

@@ -52,6 +52,15 @@ elif args[:1] in (["eval"], ["reload"], ["setcursor"]):
     print("ok")
 ''',
         "omarchy-brightness-display": LOGGER + '''
+hang = os.environ["FOAMY_CALLS"] + ".ddchang"
+if os.path.exists(hang):
+    # A wedged DDC bus: never answers and ignores SIGTERM. Its pid goes to
+    # $FOAMY_CALLS.ddchang.pid so the test can check nothing outlives it.
+    import signal
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    with open(hang + ".pid", "w") as pid:
+        pid.write(str(os.getpid()))
+    time.sleep(3600)
 with open(os.environ["FOAMY_CALLS"] + ".ddc", "a") as ddc:
     ddc.write("start %f\\n" % time.monotonic())
 time.sleep(0.05)
