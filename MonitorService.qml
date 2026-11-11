@@ -316,6 +316,9 @@ Singleton {
     brightnessProc.job = null
     if (job.kind === "write" && code) {
       root.error = (started ? String(brightnessError.text).trim() : "") || "Could not set brightness"
+      root.brightnessFailure = root.error
+    } else if (job.kind === "write") {
+      root.clearFailure("brightnessFailure")
     } else if (job.kind === "read" && root.brightnessWrites[job.name] === undefined) {
       root._store(job.name, Model.parseBrightness(code, brightnessOutput.text))
       var change = root.brightnessAfterRead[job.name]
@@ -333,6 +336,15 @@ Singleton {
       }
     }
     Qt.callLater(root.pumpBrightness)
+  }
+  // The error the last failed brightness write (or Advanced job) showed.
+  // The next good job of the same kind clears it, unless something else
+  // (a display command's error) has replaced it since; like statusError.
+  property string brightnessFailure: ""
+  property string advancedFailure: ""
+  function clearFailure(name) {
+    if (root[name] && root.error === root[name]) root.error = ""
+    root[name] = ""
   }
   property Timer brightnessDebounce: Timer { interval: 150; onTriggered: root.pumpBrightness() }
   property Process brightnessProc: Process {
@@ -373,7 +385,12 @@ Singleton {
   property Process advancedProc: Process {
     stderr: StdioCollector { id: advancedError; waitForEnd: true }
     onExited: function(code) {
-      if (code) root.error = String(advancedError.text).trim() || "Could not update advanced settings"
+      if (code) {
+        root.error = String(advancedError.text).trim() || "Could not update advanced settings"
+        root.advancedFailure = root.error
+      } else {
+        root.clearFailure("advancedFailure")
+      }
       root.refresh()
     }
   }

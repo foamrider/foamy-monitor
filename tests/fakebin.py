@@ -70,6 +70,10 @@ with open(os.environ["FOAMY_CALLS"] + ".ddc", "a") as ddc:
 name = sys.argv[sys.argv.index("--monitor") + 1] if "--monitor" in sys.argv else "focused"
 level = os.environ["FOAMY_CALLS"] + ".brightness." + name
 if any(a.endswith("%") for a in sys.argv[1:]):
+    if os.path.exists(os.environ["FOAMY_CALLS"] + ".ddcfail"):
+        # A write the display refuses: the message on stderr, exit 1.
+        sys.stderr.write("DDC write failed on " + name + "\\n")
+        sys.exit(1)
     # Like hardware, a written level reads back.
     with open(level, "w") as out:
         out.write(sys.argv[-1].rstrip("%"))
@@ -77,7 +81,11 @@ if any(a.endswith("%") for a in sys.argv[1:]):
 print(open(level).read().strip() if os.path.exists(level) else "%d" % BRIGHTNESS)
 ''',
         "gsettings": LOGGER + 'print("24" if "cursor-size" in sys.argv else "\'Adwaita\'")\n',
-        "omarchy-display-text-size": LOGGER,
+        "omarchy-display-text-size": LOGGER + '''
+if os.path.exists(os.environ["FOAMY_CALLS"] + ".textfail"):
+    sys.stderr.write("text size refused\\n")
+    sys.exit(1)
+''',
         # FluxCast double: a scan that runs until stopped, logging the signal.
         # With $FOAMY_CALLS.peers present a scan instead finishes after
         # $FOAMY_CALLS.scandelay seconds (default 0.8) and prints those peers

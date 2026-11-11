@@ -364,7 +364,57 @@ ShellRoot {
     eq(Object.keys(shell.service.brightnessWrites).length, 0, "the level queued behind it was written")
     shell.service.brightnessTimeoutSeconds = 20
     shell.service.readBrightness("eDP-1")
-    until(brightnessIdle, "the read after the hang", lifeA)
+    until(brightnessIdle, "the read after the hang", errorsA)
+  }
+
+  // ---- Brightness and Advanced errors clear after the next good job ----
+  // Fakes: $FOAMY_CALLS.ddcfail refuses brightness writes, .textfail the text size.
+  function advancedIdle() { return !shell.service.advancedBusy && displayIdle() }
+  function errorsA() {
+    shell.sh("touch \"$FOAMY_CALLS.ddcfail\"", function() {
+      eq(shell.service.setBrightness("DP-2", 70), 70, "a level the display will refuse")
+      until(brightnessIdle, "the refused write", errorsB)
+    })
+  }
+  function errorsB() {
+    eq(shell.service.error, "DDC write failed on DP-2", "a failed brightness write shows its error")
+    shell.sh("rm -f \"$FOAMY_CALLS.ddcfail\"", function() {
+      shell.service.setBrightness("DP-2", 75)
+      until(brightnessIdle, "the next brightness write", errorsC)
+    })
+  }
+  function errorsC() {
+    eq(shell.service.error, "", "the next good brightness write clears it")
+    shell.sh("touch \"$FOAMY_CALLS.textfail\"", function() {
+      shell.service.setTextSize(12)
+      until(advancedIdle, "the refused text size", errorsD)
+    })
+  }
+  function errorsD() {
+    eq(shell.service.error, "text size refused", "a failed Advanced job shows its error")
+    shell.sh("rm -f \"$FOAMY_CALLS.textfail\"", function() {
+      shell.service.setTextSize(12)
+      until(advancedIdle, "the next text size", errorsE)
+    })
+  }
+  function errorsE() {
+    eq(shell.service.error, "", "the next good Advanced job clears it")
+    // An error that replaced the brightness one since is not its to clear.
+    shell.sh("touch \"$FOAMY_CALLS.ddcfail\"", function() {
+      shell.service.setBrightness("DP-2", 80)
+      until(brightnessIdle, "another refused write", function() {
+        shell.service.error = "A display test is already running"
+        shell.sh("rm -f \"$FOAMY_CALLS.ddcfail\"", function() {
+          shell.service.setBrightness("DP-2", 85)
+          until(brightnessIdle, "a good write after another error", errorsF)
+        })
+      })
+    })
+  }
+  function errorsF() {
+    eq(shell.service.error, "A display test is already running", "a good brightness write leaves a later display error")
+    shell.service.error = ""
+    lifeA()
   }
 
   // ---- Per-view demand: popup close, a bar removed (unplug), hot-plug grace ----
