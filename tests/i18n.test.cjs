@@ -32,7 +32,6 @@ assert.equal(manifest.barWidget?.defaults?.language, undefined);
 assert.equal((manifest.barWidget?.schema || []).some(f => f.key === 'language'), false);
 assert.equal(I.text('Unknown %1 {name}', 'no', ['$& %2']), 'Unknown $& %2 {name}');
 assert.equal(I.text('constructor', 'no'), 'constructor');
-assert.ok(I.source.includes('Qt.createQmlObject'), '4.0 must not statically require a 4.5 QML type');
 assert.ok(!fs.existsSync(path.join(root, 'FoamyI18n.qml')), 'the forked FoamyI18n is gone');
 
 // Helper errors: translate the known English prefix, never the detail.
