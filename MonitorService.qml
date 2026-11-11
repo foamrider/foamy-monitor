@@ -530,6 +530,9 @@ Singleton {
       }
     }
   }
+  // FluxCast or FFmpeg missing while the Wireless tab shows: check again every
+  // 10 s, so installing them is noticed without reopening the panel. It runs
+  // only while that tab is in view.
   property Timer dependencyRetry: Timer {
     interval: 10000
     repeat: true
@@ -582,6 +585,9 @@ Singleton {
       root.castExpectedStop = false
     }
   }
+  // The first stop is a SIGINT to FluxCast, whose own cleanup stops its media
+  // processes (up to 5 s each) and the Wi-Fi Direct group. Still running
+  // after 12 s: ask the bridge again, which then SIGTERMs FluxCast's group.
   property Timer castStopWatchdog: Timer {
     interval: 12000
     onTriggered: if (root.castProc.running) root.castProc.signal(15)
