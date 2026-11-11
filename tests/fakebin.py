@@ -6,7 +6,6 @@ every call to $FOAMY_CALLS and never touch the
 live session, displays or DDC buses.
 """
 import json
-import os
 import stat
 from pathlib import Path
 
