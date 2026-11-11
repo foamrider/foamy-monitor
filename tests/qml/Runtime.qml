@@ -588,9 +588,38 @@ ShellRoot {
     eq(shell.service.wirelessPeers.length, 2, "a stopped refresh keeps the list")
     shell.service.stopCast()
     panel(1).close()
-    shell.sh("rm -f \"$FOAMY_CALLS.peers\" \"$FOAMY_CALLS.scandelay\"", function() {
-      shell.panelCount = 0
-      until(function() { return shell.service.teardowns === 1 && !shell.service.scanRunning && !shell.service.castRunning }, "the teardown", stepEight)
+    shell.sh("rm -f \"$FOAMY_CALLS.peers\" \"$FOAMY_CALLS.scandelay\"; touch \"$FOAMY_CALLS.stubborn\"", function() {
+      until(function() { return !shell.service.castRunning }, "the cast to stop", scanStopA)
+    })
+  }
+
+  // ---- A scan whose FluxCast ignores the stop (fake: $FOAMY_CALLS.stubborn) ----
+  // The first stop is SIGINT to FluxCast; the watchdog's second signal makes
+  // the bridge SIGTERM it. The watchdog runs at 500 ms here (12 s live).
+  function scanStopA() {
+    var watchdog = shell.service.scanStopWatchdog
+    check(watchdog !== undefined, "the scan has a stop watchdog")
+    if (watchdog) watchdog.interval = 500
+    shell.service.startWirelessScan()
+    until(function() { return shell.service.scanRunning }, "the stubborn scan", function() {
+      // Let FluxCast start and install its handlers before the stop.
+      wait.after(300, scanStopB)
+    })
+  }
+  function scanStopB() {
+    shell.service.cancelWirelessScan()
+    var watchdog = shell.service.scanStopWatchdog
+    eq(watchdog && watchdog.running, true, "a stopped scan arms its watchdog")
+    wait.waitFor(function() { return !shell.service.scanRunning }, 6000, function(ok) {
+      check(ok, "a scan that ignores its stop ends at the watchdog's second signal")
+      eq(watchdog && watchdog.running, false, "the watchdog stops with the scan")
+      eq(shell.service.wirelessScanState !== "error" && shell.service.wirelessScanState !== "scanning", true,
+        "a stopped scan is no failure: " + shell.service.wirelessScanState)
+      if (watchdog) watchdog.interval = 12000
+      shell.sh("rm -f \"$FOAMY_CALLS.stubborn\"", function() {
+        shell.panelCount = 0
+        until(function() { return shell.service.teardowns === 1 && !shell.service.scanRunning && !shell.service.castRunning }, "the teardown", stepEight)
+      })
     })
   }
 

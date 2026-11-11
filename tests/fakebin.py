@@ -81,7 +81,8 @@ print(open(level).read().strip() if os.path.exists(level) else "%d" % BRIGHTNESS
         # FluxCast double: a scan that runs until stopped, logging the signal.
         # With $FOAMY_CALLS.peers present a scan instead finishes after
         # $FOAMY_CALLS.scandelay seconds (default 0.8) and prints those peers
-        # (FluxCast's "[n] MAC name via source" lines).
+        # (FluxCast's "[n] MAC name via source" lines). With
+        # $FOAMY_CALLS.stubborn present it ignores SIGINT.
         "fluxcast": LOGGER + '''
 import signal
 def stop(number, _frame):
@@ -90,6 +91,12 @@ def stop(number, _frame):
     sys.exit(0)
 signal.signal(signal.SIGINT, stop)
 signal.signal(signal.SIGTERM, stop)
+if os.path.exists(os.environ["FOAMY_CALLS"] + ".stubborn"):
+    # A FluxCast that ignores its cleanup signal (SIGINT): only SIGTERM ends it.
+    def ignore(number, _frame):
+        with open(os.environ["FOAMY_CALLS"], "a") as log:
+            log.write("fluxcast-ignored\\t%d\\n" % number)
+    signal.signal(signal.SIGINT, ignore)
 peers = os.environ["FOAMY_CALLS"] + ".peers"
 if "--wfd-scan" in sys.argv and os.path.exists(peers):
     delay = os.environ["FOAMY_CALLS"] + ".scandelay"

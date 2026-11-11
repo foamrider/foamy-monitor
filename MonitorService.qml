@@ -450,6 +450,7 @@ Singleton {
     if (!scanProc.running || wirelessScanExpectedStop) return
     wirelessScanExpectedStop = true
     scanProc.signal(15)
+    scanStopWatchdog.restart()
   }
   function connectWirelessPeer(peer, label, monitor) {
     if (!active || helperUnavailable || !peer || castProc.running || missingPackages.length) return
@@ -545,6 +546,7 @@ Singleton {
       onStreamFinished: if (!root.wirelessScanExpectedStop && !root.helperUnavailable) root.acceptWirelessScan(text)
     }
     onExited: function(code) {
+      root.scanStopWatchdog.stop()
       if (FoamyNative.unavailable(code)) {
         root.markUnavailable()
         root.wirelessScanState = "error"
@@ -592,6 +594,13 @@ Singleton {
     interval: 12000
     onTriggered: if (root.castProc.running) root.castProc.signal(15)
   }
+  // The same for a scan: a FluxCast that ignores the SIGINT, or hangs past
+  // its --wfd-timeout, would otherwise keep Wireless scanning (and the
+  // Wi-Fi Direct device busy) until the shell reloads.
+  property Timer scanStopWatchdog: Timer {
+    interval: 12000
+    onTriggered: if (root.scanProc.running) root.scanProc.signal(15)
+  }
 
   // ---- Lifecycle ----------------------------------------------------------
   // The last panel is gone (plugin disabled or removed) or the shell is
@@ -612,7 +621,7 @@ Singleton {
     identifyVisible = false
     if (castProc.running) { castExpectedStop = true; castProc.signal(15) }
     pendingCast = null
-    if (scanProc.running) { wirelessScanExpectedStop = true; scanProc.signal(15) }
+    if (scanProc.running) { wirelessScanExpectedStop = true; scanProc.signal(15); scanStopWatchdog.restart() }
   }
   Component.onDestruction: teardown()
 }
