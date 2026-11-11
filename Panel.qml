@@ -67,7 +67,7 @@ Panel {
   function wheelTarget() { return root.screenName || MonitorService.focusedMonitor }
   function showBrightnessOsd(percent) {
     if (!bar || !bar.shell || typeof bar.shell.summon !== "function") return
-    // omarchy.osd is the summon target a clone of omarchy.monitor may use (4.0 and 4.5).
+    // omarchy.osd is the summon target a clone of omarchy.monitor may use.
     bar.shell.summon("omarchy.osd", JSON.stringify({ icon: "brightness", value: percent }))
   }
   function brightnessIpc(value) {

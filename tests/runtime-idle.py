@@ -8,12 +8,11 @@ PATH that holds nothing else from Omarchy. After a warm-up it counts the
 processes started and the CPU used by the shell and its children while every
 popup stays closed.
 
-  tests/runtime-idle.py [--plugin DIR] [--host 4.5|4.0] [--instances 3] [--seconds 30]
+  tests/runtime-idle.py [--plugin DIR] [--instances 3] [--seconds 30]
                         [--max-idle-spawns N]
 
-The 4.5 host (the default) is FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else
-the installed /usr/share/omarchy/shell. --host 4.0 needs FOAMY_HOST_40 (a 4.0
-shell) and prints SKIP without it.
+The host is Omarchy 4.5: FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else
+the installed /usr/share/omarchy/shell.
 
 Exits 1 when more than --max-idle-spawns processes start in the idle window
 (the regression check; default 0).
@@ -83,16 +82,12 @@ def calls(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--plugin", default=str(HERE.parent))
-    parser.add_argument("--host", default="4.5", choices=["4.5", "4.0"])
     parser.add_argument("--instances", type=int, default=3)
     parser.add_argument("--warmup", type=float, default=8)
     parser.add_argument("--seconds", type=float, default=30)
     parser.add_argument("--max-idle-spawns", type=int, default=0)
     args = parser.parse_args()
     plugin = Path(args.plugin).resolve()
-    if args.host == "4.0" and not os.environ.get("FOAMY_HOST_40"):
-        print("SKIP 4.0: set FOAMY_HOST_40 to an Omarchy 4.0 shell to run it")
-        return 0
     # Set before the harness reads its hosts.
     if not os.environ.get("FOAMY_HOST_45"):
         root = os.environ.get("OMARCHY_TEST_ROOT")
@@ -100,7 +95,7 @@ def main():
     sys.path.insert(0, str(kit_preview(plugin)))
     import harness  # noqa: E402
 
-    run = harness.Run(args.host, SHELL, plugin=plugin, prefix="foamy-monitor-idle-")
+    run = harness.Run("4.5", SHELL, plugin=plugin, prefix="foamy-monitor-idle-")
     try:
         home = Path(run.env["HOME"])
         (home / ".config/hypr").mkdir(parents=True)
@@ -124,7 +119,7 @@ def main():
                     process.wait(timeout=10)
         used = end_cpu - start_cpu
         startup = calls(log)[:start_calls]
-        print(f"plugin {plugin} host {args.host}, {args.instances} instances, idle window {args.seconds:.0f} s")
+        print(f"plugin {plugin} host 4.5, {args.instances} instances, idle window {args.seconds:.0f} s")
         print(f"startup calls: {len(startup)}  ({', '.join(sorted(set(c.split(chr(9))[0] + ' ' + (c.split(chr(9))[2] if len(c.split(chr(9))) > 2 and c.startswith('python3') else '') for c in startup)))})")
         print(f"idle calls: {len(window)}  idle CPU: {used:.2f} s = {100 * used / args.seconds:.2f} % of one core")
         kinds = {}
