@@ -33,7 +33,10 @@ Singleton {
   onMembersChanged: {
     if (members > 0) {
       releaseTimer.stop()
-      if (!active) { active = true; refresh() }
+      if (!active) {
+        active = true
+        refresh()
+      }
     } else if (active) {
       releaseTimer.restart()
     }
@@ -42,7 +45,9 @@ Singleton {
   // The native helper (display transaction and FluxCast bridge), bin/<arch>/.
   readonly property string pluginDir: FoamyNative.localPath(Qt.resolvedUrl("."))
   readonly property string helperName: "foamy-monitor-helper"
-  function helper(args) { return FoamyNative.command(pluginDir, helperName, args) }
+  function helper(args) {
+    return FoamyNative.command(pluginDir, helperName, args)
+  }
   // No helper for this CPU (exit 126/127): say so once, never retry.
   property bool helperUnavailable: false
   function markUnavailable() {
@@ -54,9 +59,17 @@ Singleton {
   }
 
   // ---- Display transaction ------------------------------------------------
-  property var transaction: ({ phase: "idle", base: [], draft: [] })
+  property var transaction: ({
+      phase: "idle",
+      base: [],
+      draft: []
+    })
   property var liveMonitors: []
-  property var gtkScale: ({ base: null, value: null, error: "" })
+  property var gtkScale: ({
+      base: null,
+      value: null,
+      error: ""
+    })
   property string statePath: ""
   property string error: ""
   property bool displayChangesSaved: false
@@ -76,33 +89,52 @@ Singleton {
   readonly property bool busy: ["applying", "testing", "saving", "reverting"].indexOf(transaction.phase) >= 0
   readonly property string focusedMonitor: {
     var monitor = Hyprland.focusedMonitor
-    if (monitor && monitor.name) return String(monitor.name)
-    var live = liveMonitors.find(function(m) { return m.focused })
+    if (monitor && monitor.name)
+      return String(monitor.name)
+    var live = liveMonitors.find(function (m) {
+      return m.focused
+    })
     return live ? live.name : ""
   }
-  readonly property int changeCount: transaction.draft.reduce(function(sum, m) {
+  readonly property int changeCount: transaction.draft.reduce(function (sum, m) {
     return sum + root.changesFor(m).length
   }, 0) + (gtkScale.base !== gtkScale.value ? 1 : 0)
-  onChangeCountChanged: if (changeCount > 0) displayChangesSaved = false
-  readonly property bool disconnectedDraft: transaction.draft.some(function(m) { return !m.connected })
+  onChangeCountChanged: if (changeCount > 0)
+    displayChangesSaved = false
+  readonly property bool disconnectedDraft: transaction.draft.some(function (m) {
+    return !m.connected
+  })
 
   function changesFor(monitor) {
-    return Model.changedFields(transaction.base.find(function(m) { return m.id === monitor.id }), monitor)
+    return Model.changedFields(transaction.base.find(function (m) {
+      return m.id === monitor.id
+    }), monitor)
   }
 
   // Nothing runs without a panel (preview mocks set the state directly).
   function enqueue(action, payload) {
-    if (!active || helperUnavailable) return
+    if (!active || helperUnavailable)
+      return
     if (action === "status") {
       // A queued command reads the displays when it starts, so it covers this request.
-      if (commands.length) return
-      if (commandProc.running || arrangementDragActive) { statusPending = true; return }
+      if (commands.length)
+        return
+      if (commandProc.running || arrangementDragActive) {
+        statusPending = true
+        return
+      }
     }
-    commands = commands.concat([{ action: action, payload: payload || {} }])
+    commands = commands.concat([
+      {
+        action: action,
+        payload: payload || {}
+      }
+    ])
     runNext()
   }
   function runNext() {
-    if (commandProc.running || !commands.length) return
+    if (commandProc.running || !commands.length)
+      return
     var next = commands[0]
     commands = commands.slice(1)
     // Every command answers with fresh state, read after any earlier request.
@@ -110,13 +142,18 @@ Singleton {
     commandProc.action = next.action
     commandProc.payload = next.payload
     commandProc.command = helper([next.action])
-    if (next.action === "status") statusRuns++
+    if (next.action === "status")
+      statusRuns++
     commandProc.running = true
   }
-  function statusSoon() { if (active) statusDebounce.restart() }
+  function statusSoon() {
+    if (active)
+      statusDebounce.restart()
+  }
   function refresh() {
     enqueue("status")
-    if (active && demanded && !cursorInfoProc.running) cursorInfoProc.running = true
+    if (active && demanded && !cursorInfoProc.running)
+      cursorInfoProc.running = true
   }
   // The error a failed status run showed. A command's error (a rejected
   // patch, apply or decision) stays until the next command, so a poll does
@@ -128,35 +165,57 @@ Singleton {
     statusError = commandProc.action === "status" ? message : ""
   }
   function acceptResult(text) {
-    if (helperUnavailable) return
-    if (arrangementDragActive) { deferredResult = text; return }
+    if (helperUnavailable)
+      return
+    if (arrangementDragActive) {
+      deferredResult = text
+      return
+    }
     try {
       var result = JSON.parse(text)
-      if (!result.ok) { commandFailed(result.error); return }
+      if (!result.ok) {
+        commandFailed(result.error)
+        return
+      }
       // A clean draft alone is not proof of a save: wait for Keep to finish successfully.
       if (busy && result.state.phase === "idle")
         displayChangesSaved = result.state.decision === "keep" && !result.state.error && result.state.token === transaction.token
-      if (JSON.stringify(transaction) !== JSON.stringify(result.state)) transaction = result.state
-      if (JSON.stringify(liveMonitors) !== JSON.stringify(result.live)) liveMonitors = result.live
-      var gtk = result.gtkScale || { base: null, value: null, error: "Could not read GTK scale" }
-      if (JSON.stringify(gtkScale) !== JSON.stringify(gtk)) gtkScale = gtk
-      if (result.statePath && result.statePath !== statePath) statePath = result.statePath
-      if (commandProc.action !== "status" || error === statusError) error = ""
+      if (JSON.stringify(transaction) !== JSON.stringify(result.state))
+        transaction = result.state
+      if (JSON.stringify(liveMonitors) !== JSON.stringify(result.live))
+        liveMonitors = result.live
+      var gtk = result.gtkScale || {
+        base: null,
+        value: null,
+        error: "Could not read GTK scale"
+      }
+      if (JSON.stringify(gtkScale) !== JSON.stringify(gtk))
+        gtkScale = gtk
+      if (result.statePath && result.statePath !== statePath)
+        statePath = result.statePath
+      if (commandProc.action !== "status" || error === statusError)
+        error = ""
       statusError = ""
       // The file moved past this answer while the command ran: another writer.
-      if (fileRevision > (transaction.revision || 0)) statusSoon()
+      if (fileRevision > (transaction.revision || 0))
+        statusSoon()
     } catch (e) {
       commandFailed("Could not read display settings: " + e)
     }
   }
   function flushCommands() {
-    if (commands.length) runNext()
-    else if (statusPending && !arrangementDragActive) enqueue("status")
+    if (commands.length)
+      runNext()
+    else if (statusPending && !arrangementDragActive)
+      enqueue("status")
   }
   onArrangementDragActiveChanged: if (!arrangementDragActive) {
     var result = deferredResult
     deferredResult = ""
-    if (result) Qt.callLater(function() { root.acceptResult(result) })
+    if (result)
+      Qt.callLater(function () {
+        root.acceptResult(result)
+      })
     Qt.callLater(root.flushCommands)
   }
 
@@ -165,11 +224,21 @@ Singleton {
     property var payload: ({})
     stdinEnabled: true
     onStarted: write(JSON.stringify(payload) + "\n")
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.acceptResult(text) }
-    stderr: StdioCollector { id: commandError; waitForEnd: true }
-    onExited: function(code) {
-      if (FoamyNative.unavailable(code)) { root.markUnavailable(); return }
-      if (code && commandError.text) root.error = String(commandError.text).trim()
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.acceptResult(text)
+    }
+    stderr: StdioCollector {
+      id: commandError
+      waitForEnd: true
+    }
+    onExited: function (code) {
+      if (FoamyNative.unavailable(code)) {
+        root.markUnavailable()
+        return
+      }
+      if (code && commandError.text)
+        root.error = String(commandError.text).trim()
       Qt.callLater(root.flushCommands)
     }
   }
@@ -186,7 +255,8 @@ Singleton {
         root.fileRevision = Number(JSON.parse(text()).revision) || 0
         // While a command runs, its own answer may carry this revision; the
         // check after it lands (acceptResult) decides whether to read again.
-        if (!root.commandProc.running && root.fileRevision !== root.transaction.revision) root.statusSoon()
+        if (!root.commandProc.running && root.fileRevision !== root.transaction.revision)
+          root.statusSoon()
       } catch (e) {}
     }
   }
@@ -194,10 +264,16 @@ Singleton {
   property Connections hyprlandEvents: Connections {
     target: Hyprland
     enabled: root.active
-    function onRawEvent(event) { if (event && Model.isLayoutEvent(event.name)) root.statusSoon() }
+    function onRawEvent(event) {
+      if (event && Model.isLayoutEvent(event.name))
+        root.statusSoon()
+    }
   }
 
-  property Timer statusDebounce: Timer { interval: 150; onTriggered: root.enqueue("status") }
+  property Timer statusDebounce: Timer {
+    interval: 150
+    onTriggered: root.enqueue("status")
+  }
   property Timer pollTimer: Timer {
     interval: root.busy ? 1000 : 5000
     repeat: true
@@ -206,7 +282,8 @@ Singleton {
   }
   property Timer releaseTimer: Timer {
     interval: 3000
-    onTriggered: if (root.members === 0) root.teardown()
+    onTriggered: if (root.members === 0)
+      root.teardown()
   }
 
   // ---- Brightness (DDC or backlight via omarchy-brightness-display) -------
@@ -217,9 +294,12 @@ Singleton {
   signal brightnessStepped(var requester, string monitor, int percent)
   property var _stepRequester: ({})
 
-  function brightnessFor(name) { return brightness[name] || null }
+  function brightnessFor(name) {
+    return brightness[name] || null
+  }
   function readBrightness(name) {
-    if (!active || !name || brightnessReads.indexOf(name) !== -1 || brightnessWrites[name] !== undefined) return
+    if (!active || !name || brightnessReads.indexOf(name) !== -1 || brightnessWrites[name] !== undefined)
+      return
     brightnessReads = brightnessReads.concat([name])
     pumpBrightness()
   }
@@ -228,14 +308,22 @@ Singleton {
   // own buttons change it while every popup is closed).
   function _store(name, value) {
     var next = Object.assign({}, brightness)
-    next[name] = { available: value.available, percent: value.percent, at: Date.now() }
+    next[name] = {
+      available: value.available,
+      percent: value.percent,
+      at: Date.now()
+    }
     brightness = next
   }
   function setBrightness(name, percent) {
     var known = brightness[name]
-    if (!name || !known || !known.available) return -1
+    if (!name || !known || !known.available)
+      return -1
     var value = Model.clampBrightness(percent)
-    _store(name, { available: true, percent: value })
+    _store(name, {
+      available: true,
+      percent: value
+    })
     // A level being written supersedes changes still waiting for a read
     // (slider, IPC level or a step on a fresh reading); otherwise a later
     // read would apply a stale step over it.
@@ -260,10 +348,12 @@ Singleton {
   // queued behind a read; brightnessStepped(requester, …) follows a queued step.
   function changeBrightness(name, change, requester) {
     var known = brightness[name]
-    if (!name) return -1
+    if (!name)
+      return -1
     var absolute = change.value !== undefined
     if (known && (Model.brightnessFresh(known, Date.now()) || (absolute && known.available))) {
-      if (!known.available) return -1
+      if (!known.available)
+        return -1
       return setBrightness(name, absolute ? change.value : known.percent + change.delta)
     }
     var after = Object.assign({}, brightnessAfterRead)
@@ -279,18 +369,24 @@ Singleton {
     return 0
   }
   function pumpBrightness() {
-    if (!active || brightnessProc.running) return
+    if (!active || brightnessProc.running)
+      return
     var job = Model.nextBrightnessJob(brightnessWrites, brightnessReads, brightnessDebounce.running)
-    if (!job) return
+    if (!job)
+      return
     if (job.kind === "write") {
       var writes = Object.assign({}, brightnessWrites)
       delete writes[job.name]
       brightnessWrites = writes
       // A read queued before this write would only bring back an older level.
-      brightnessReads = brightnessReads.filter(function(n) { return n !== job.name })
+      brightnessReads = brightnessReads.filter(function (n) {
+        return n !== job.name
+      })
       brightnessProc.command = brightnessDeadline().concat(["omarchy-brightness-display", "--no-osd", "--monitor", job.name, job.value + "%"])
     } else {
-      brightnessReads = brightnessReads.filter(function(n) { return n !== job.name })
+      brightnessReads = brightnessReads.filter(function (n) {
+        return n !== job.name
+      })
       brightnessProc.command = brightnessDeadline().concat(["omarchy-brightness-display", "--monitor", job.name])
     }
     brightnessProc.job = job
@@ -306,13 +402,16 @@ Singleton {
   // (ddcutil included), SIGKILL 2 s after SIGTERM: a failed job (non-zero
   // exit) like any other.
   property int brightnessTimeoutSeconds: 20
-  function brightnessDeadline() { return ["timeout", "--kill-after=2s", brightnessTimeoutSeconds + "s"] }
+  function brightnessDeadline() {
+    return ["timeout", "--kill-after=2s", brightnessTimeoutSeconds + "s"]
+  }
   // The one end of a brightness job: exited, or never started (Quickshell
   // then emits no exited(), only running -> false). The job is taken first,
   // so the running -> false that follows an exit finds nothing to finish.
   function finishBrightness(code, started) {
     var job = brightnessProc.job
-    if (!job) return
+    if (!job)
+      return
     brightnessProc.job = null
     if (job.kind === "write" && code) {
       root.error = (started ? String(brightnessError.text).trim() : "") || "Could not set brightness"
@@ -343,28 +442,43 @@ Singleton {
   property string brightnessFailure: ""
   property string advancedFailure: ""
   function clearFailure(name) {
-    if (root[name] && root.error === root[name]) root.error = ""
+    if (root[name] && root.error === root[name])
+      root.error = ""
     root[name] = ""
   }
-  property Timer brightnessDebounce: Timer { interval: 150; onTriggered: root.pumpBrightness() }
+  property Timer brightnessDebounce: Timer {
+    interval: 150
+    onTriggered: root.pumpBrightness()
+  }
   property Process brightnessProc: Process {
     property var job: null
-    stdout: StdioCollector { id: brightnessOutput; waitForEnd: true }
-    stderr: StdioCollector { id: brightnessError; waitForEnd: true }
-    onExited: function(code) { root.finishBrightness(code, true) }
-    onRunningChanged: if (!running) root.finishBrightness(127, false)
+    stdout: StdioCollector {
+      id: brightnessOutput
+      waitForEnd: true
+    }
+    stderr: StdioCollector {
+      id: brightnessError
+      waitForEnd: true
+    }
+    onExited: function (code) {
+      root.finishBrightness(code, true)
+    }
+    onRunningChanged: if (!running)
+      root.finishBrightness(127, false)
   }
 
   // ---- Advanced: text size, cursor size ------------------------------------
   property int cursorSize: 24
   readonly property bool advancedBusy: advancedProc.running
   function setCursorSize(value) {
-    if (!active || advancedProc.running) return
+    if (!active || advancedProc.running)
+      return
     advancedProc.command = advancedDeadline.concat(["bash", "-c", 'theme=$(gsettings get org.gnome.desktop.interface cursor-theme); theme=${theme//\'/}; gsettings set org.gnome.desktop.interface cursor-size "$1" && hyprctl setcursor "$theme" "$1"', "cursor-size", String(Number(value))])
     advancedProc.running = true
   }
   function setTextSize(value) {
-    if (!active || advancedProc.running) return
+    if (!active || advancedProc.running)
+      return
     advancedProc.command = advancedDeadline.concat(["omarchy-display-text-size", String(Number(value))])
     advancedProc.running = true
   }
@@ -378,13 +492,17 @@ Singleton {
       waitForEnd: true
       onStreamFinished: {
         var n = Number(String(text).trim())
-        if (isFinite(n) && n > 0) root.cursorSize = n
+        if (isFinite(n) && n > 0)
+          root.cursorSize = n
       }
     }
   }
   property Process advancedProc: Process {
-    stderr: StdioCollector { id: advancedError; waitForEnd: true }
-    onExited: function(code) {
+    stderr: StdioCollector {
+      id: advancedError
+      waitForEnd: true
+    }
+    onExited: function (code) {
       if (code) {
         root.error = String(advancedError.text).trim() || "Could not update advanced settings"
         root.advancedFailure = root.error
@@ -397,8 +515,14 @@ Singleton {
 
   // ---- Identify -----------------------------------------------------------
   property bool identifyVisible: false
-  function showIdentify() { identifyVisible = true; identifyTimer.restart() }
-  property Timer identifyTimer: Timer { interval: 2500; onTriggered: root.identifyVisible = false }
+  function showIdentify() {
+    identifyVisible = true
+    identifyTimer.restart()
+  }
+  property Timer identifyTimer: Timer {
+    interval: 2500
+    onTriggered: root.identifyVisible = false
+  }
 
   // ---- Wireless displays (FluxCast) ---------------------------------------
   // The receivers from the last finished scan live here, not in a popup, so a
@@ -426,10 +550,12 @@ Singleton {
   property bool previewScanning: false
   // The tab that wants scanning (an open popup on the Wireless tab).
   readonly property bool wirelessWanted: FoamyShared.demandCount("monitor-wireless") > 0
-  onWirelessWantedChanged: if (wirelessWanted) showWireless()
+  onWirelessWantedChanged: if (wirelessWanted)
+    showWireless()
   // The last open popup closed (or its bar went away): stop a scan nobody
   // watches. The list stays cached; a cast keeps running.
-  onDemandedChanged: if (!demanded) releaseWireless()
+  onDemandedChanged: if (!demanded)
+    releaseWireless()
   readonly property bool scanRunning: scanProc.running
   readonly property bool scanning: scanProc.running || dependenciesProc.running || previewScanning
   // A scan with receivers on screen updates them in place: no searching row.
@@ -437,25 +563,32 @@ Singleton {
   readonly property bool castRunning: castProc.running
   readonly property bool activelyCasting: castRunning && castPhase === "casting"
 
-  function wirelessOpenAction() { return Model.wirelessOpenAction(wirelessScannedAt, Date.now()) }
+  function wirelessOpenAction() {
+    return Model.wirelessOpenAction(wirelessScannedAt, Date.now())
+  }
   function forgetWireless() {
     wirelessPeers = []
     wirelessScannedAt = 0
-    if (wirelessScanState === "results" || wirelessScanState === "empty") wirelessScanState = "idle"
+    if (wirelessScanState === "results" || wirelessScanState === "empty")
+      wirelessScanState = "idle"
   }
   // The Wireless tab came into view in an open popup.
   function showWireless() {
     var action = wirelessOpenAction()
-    if (action === "discard") forgetWireless()
-    if (action !== "keep" || missingPackages.length) checkWireless()
+    if (action === "discard")
+      forgetWireless()
+    if (action !== "keep" || missingPackages.length)
+      checkWireless()
   }
   // A dependency check, then a scan (Scan button, IPC, the tab shown).
   function checkWireless() {
-    if (!active || helperUnavailable || dependenciesProc.running || scanProc.running || castProc.running) return
+    if (!active || helperUnavailable || dependenciesProc.running || scanProc.running || castProc.running)
+      return
     dependenciesProc.running = true
   }
   function startWirelessScan() {
-    if (!active || helperUnavailable || scanProc.running || castProc.running || missingPackages.length) return
+    if (!active || helperUnavailable || scanProc.running || castProc.running || missingPackages.length)
+      return
     wirelessScanExpectedStop = false
     wirelessError = ""
     wirelessScanState = "scanning"
@@ -464,17 +597,26 @@ Singleton {
     scanProc.running = true
   }
   function cancelWirelessScan() {
-    if (!scanProc.running || wirelessScanExpectedStop) return
+    if (!scanProc.running || wirelessScanExpectedStop)
+      return
     wirelessScanExpectedStop = true
     scanProc.signal(15)
     scanStopWatchdog.restart()
   }
   function connectWirelessPeer(peer, label, monitor) {
-    if (!active || helperUnavailable || !peer || castProc.running || missingPackages.length) return
-    if (!monitor) { wirelessError = "No enabled display"; return }
+    if (!active || helperUnavailable || !peer || castProc.running || missingPackages.length)
+      return
+    if (!monitor) {
+      wirelessError = "No enabled display"
+      return
+    }
     // Discovery and casting share the Wi-Fi Direct device: stop the refresh first.
     if (scanProc.running || dependenciesProc.running) {
-      pendingCast = { peer: peer, label: label, monitor: monitor }
+      pendingCast = {
+        peer: peer,
+        label: label,
+        monitor: monitor
+      }
       cancelWirelessScan()
       return
     }
@@ -485,20 +627,21 @@ Singleton {
     castPhase = "starting"
     castDetail = ""
     wirelessError = ""
-    castProc.command = helper(["cast", "--peer", peer.address, "--monitor", monitor,
-      "--output-res", "1920x1080", "--fps", "30", "--bitrate", "4M", "--timeout", "8"])
+    castProc.command = helper(["cast", "--peer", peer.address, "--monitor", monitor, "--output-res", "1920x1080", "--fps", "30", "--bitrate", "4M", "--timeout", "8"])
     castProc.running = true
   }
   // Returns true when a picked receiver was waiting and its cast started.
   function startPendingCast() {
     var pending = pendingCast
-    if (!pending) return false
+    if (!pending)
+      return false
     pendingCast = null
     connectWirelessPeer(pending.peer, pending.label, pending.monitor)
     return true
   }
   function stopCast() {
-    if (!castProc.running || castExpectedStop) return
+    if (!castProc.running || castExpectedStop)
+      return
     castExpectedStop = true
     castPhase = "stopping"
     castProc.signal(15)
@@ -506,10 +649,12 @@ Singleton {
   }
   function applyCastEvent(line) {
     var event = Model.parseFluxCastEvent(line)
-    if (!event || event.type !== "phase") return
+    if (!event || event.type !== "phase")
+      return
     castPhase = String(event.phase)
     castDetail = String(event.detail || "")
-    if (castPhase === "error") wirelessError = castDetail
+    if (castPhase === "error")
+      wirelessError = castDetail
   }
   // A popup closed: stop a scan nobody watches (the found list stays cached).
   function releaseWireless() {
@@ -520,13 +665,15 @@ Singleton {
     missingPackages = result.missingPackages || []
     if (result.error) {
       // A failed refresh keeps the list it had; missing FluxCast empties it.
-      if (missingPackages.length) forgetWireless()
+      if (missingPackages.length)
+        forgetWireless()
       wirelessError = result.error
       wirelessScanState = missingPackages.length ? "missing" : "error"
       return
     }
     var merged = Model.mergeWirelessPeers(wirelessPeers, result.peers)
-    if (JSON.stringify(merged) !== JSON.stringify(wirelessPeers)) wirelessPeers = merged
+    if (JSON.stringify(merged) !== JSON.stringify(wirelessPeers))
+      wirelessPeers = merged
     wirelessScannedAt = Date.now()
     wirelessError = ""
     wirelessScanState = merged.length ? "results" : "empty"
@@ -534,17 +681,26 @@ Singleton {
 
   property Process dependenciesProc: Process {
     command: root.helper(["check"])
-    onExited: function(code) { if (FoamyNative.unavailable(code)) root.markUnavailable() }
+    onExited: function (code) {
+      if (FoamyNative.unavailable(code))
+        root.markUnavailable()
+    }
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        if (root.helperUnavailable) return
+        if (root.helperUnavailable)
+          return
         var result = Model.parseFluxCastScan(text)
         root.missingPackages = result.missingPackages || []
         root.wirelessError = result.error
-        if (root.missingPackages.length) { root.forgetWireless(); root.wirelessScanState = "missing" }
-        if (root.startPendingCast()) return
-        if (!result.error && root.wirelessWanted) root.startWirelessScan()
+        if (root.missingPackages.length) {
+          root.forgetWireless()
+          root.wirelessScanState = "missing"
+        }
+        if (root.startPendingCast())
+          return
+        if (!result.error && root.wirelessWanted)
+          root.startWirelessScan()
       }
     }
   }
@@ -560,9 +716,10 @@ Singleton {
   property Process scanProc: Process {
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: if (!root.wirelessScanExpectedStop && !root.helperUnavailable) root.acceptWirelessScan(text)
+      onStreamFinished: if (!root.wirelessScanExpectedStop && !root.helperUnavailable)
+        root.acceptWirelessScan(text)
     }
-    onExited: function(code) {
+    onExited: function (code) {
       root.scanStopWatchdog.stop()
       if (FoamyNative.unavailable(code)) {
         root.markUnavailable()
@@ -573,9 +730,11 @@ Singleton {
       if (root.wirelessScanExpectedStop) {
         root.wirelessScanExpectedStop = false
         root.wirelessScanState = !root.wirelessScannedAt ? "idle" : root.wirelessPeers.length ? "results" : "empty"
-        if (root.startPendingCast()) return
+        if (root.startPendingCast())
+          return
         // A quick reopen may have happened before the old process stopped.
-        if (root.wirelessWanted && root.wirelessOpenAction() !== "keep") Qt.callLater(root.checkWireless)
+        if (root.wirelessWanted && root.wirelessOpenAction() !== "keep")
+          Qt.callLater(root.checkWireless)
         return
       }
       if (root.wirelessScanState === "scanning") {
@@ -585,8 +744,12 @@ Singleton {
     }
   }
   property Process castProc: Process {
-    stdout: SplitParser { onRead: function(line) { root.applyCastEvent(line) } }
-    onExited: function(code) {
+    stdout: SplitParser {
+      onRead: function (line) {
+        root.applyCastEvent(line)
+      }
+    }
+    onExited: function (code) {
       root.castStopWatchdog.stop()
       if (FoamyNative.unavailable(code)) {
         root.markUnavailable()
@@ -609,14 +772,16 @@ Singleton {
   // after 12 s: ask the bridge again, which then SIGTERMs FluxCast's group.
   property Timer castStopWatchdog: Timer {
     interval: 12000
-    onTriggered: if (root.castProc.running) root.castProc.signal(15)
+    onTriggered: if (root.castProc.running)
+      root.castProc.signal(15)
   }
   // The same for a scan: a FluxCast that ignores the SIGINT, or hangs past
   // its --wfd-timeout, would otherwise keep Wireless scanning (and the
   // Wi-Fi Direct device busy) until the shell reloads.
   property Timer scanStopWatchdog: Timer {
     interval: 12000
-    onTriggered: if (root.scanProc.running) root.scanProc.signal(15)
+    onTriggered: if (root.scanProc.running)
+      root.scanProc.signal(15)
   }
 
   // ---- Lifecycle ----------------------------------------------------------
@@ -636,9 +801,16 @@ Singleton {
     brightnessWrites = ({})
     brightnessAfterRead = ({})
     identifyVisible = false
-    if (castProc.running) { castExpectedStop = true; castProc.signal(15) }
+    if (castProc.running) {
+      castExpectedStop = true
+      castProc.signal(15)
+    }
     pendingCast = null
-    if (scanProc.running) { wirelessScanExpectedStop = true; scanProc.signal(15); scanStopWatchdog.restart() }
+    if (scanProc.running) {
+      wirelessScanExpectedStop = true
+      scanProc.signal(15)
+      scanStopWatchdog.restart()
+    }
   }
   Component.onDestruction: teardown()
 }

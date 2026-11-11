@@ -28,21 +28,32 @@ ShellRoot {
 
   function check(ok, label) {
     checks++
-    if (!ok) { failures++; console.log("FOAMY FAIL " + host + "/" + lang + " " + label) }
+    if (!ok) {
+      failures++
+      console.log("FOAMY FAIL " + host + "/" + lang + " " + label)
+    }
   }
   function eq(actual, expected, label) {
     check(actual === expected, label + ": got " + JSON.stringify(actual) + ", expected " + JSON.stringify(expected))
   }
-  FoamyCursor { id: keys }
-  function key(view, text) { keys.emitTextKey(view, text) }
-  function panel(i) { return panels.itemAt(i) }
+  FoamyCursor {
+    id: keys
+  }
+  function key(view, text) {
+    keys.emitTextKey(view, text)
+  }
+  function panel(i) {
+    return panels.itemAt(i)
+  }
   readonly property var service: Monitor.MonitorService
 
-  FoamyWait { id: wait }
+  FoamyWait {
+    id: wait
+  }
   // Waits for condition() (at most timeoutMs, default 15 s), records whether
   // it held as a check named `label`, then runs next().
   function until(condition, label, next, timeoutMs) {
-    wait.waitFor(condition, timeoutMs || 15000, function(ok) {
+    wait.waitFor(condition, timeoutMs || 15000, function (ok) {
       check(ok, "waited for: " + label)
       next()
     })
@@ -53,8 +64,7 @@ ShellRoot {
   }
   // No brightness job running or waiting.
   function brightnessIdle() {
-    return !service.brightnessProc.running && !service.brightnessDebounce.running && service.brightnessReads.length === 0
-      && Object.keys(service.brightnessWrites).length === 0
+    return !service.brightnessProc.running && !service.brightnessDebounce.running && service.brightnessReads.length === 0 && Object.keys(service.brightnessWrites).length === 0
   }
 
   FloatingWindow {
@@ -68,7 +78,9 @@ ShellRoot {
       Repeater {
         id: panels
         model: shell.panelCount
-        Monitor.Panel { bar: mockBar }
+        Monitor.Panel {
+          bar: mockBar
+        }
       }
     }
   }
@@ -78,8 +90,18 @@ ShellRoot {
     moduleName: "foamy.monitor"
     property var summoned: []
     shell: QtObject {
-      function updateEntryInline(id, settings) { return true }
-      function summon(id, payload) { mockBar.summoned = mockBar.summoned.concat([{ id: id, payload: JSON.parse(payload) }]); return true }
+      function updateEntryInline(id, settings) {
+        return true
+      }
+      function summon(id, payload) {
+        mockBar.summoned = mockBar.summoned.concat([
+          {
+            id: id,
+            payload: JSON.parse(payload)
+          }
+        ])
+        return true
+      }
     }
   }
 
@@ -91,9 +113,8 @@ ShellRoot {
     onStarted: write(payload + "\n")
   }
 
-  Component.onCompleted: until(function() {
-    return leaders() === 1 && service.members === 3 && service.statusRuns >= 1 && service.liveMonitors.length === 3
-      && service.statePath !== "" && displayIdle()
+  Component.onCompleted: until(function () {
+    return leaders() === 1 && service.members === 3 && service.statusRuns >= 1 && service.liveMonitors.length === 3 && service.statePath !== "" && displayIdle()
   }, "the startup status", stepOne)
 
   // The trial worker's phase change, written to the helper's state file. A
@@ -101,34 +122,26 @@ ShellRoot {
   // holds `worker --token runtime-trial`, as the helper checks); "dead"
   // writes a testing phase whose worker is gone; "idle" ends the stand-in.
   function setPhase(phase, then) {
-    sh("python3 - '" + service.statePath + "' " + phase + " <<'PY'\n"
-      + "import json, os, signal, subprocess, sys, time\n"
-      + "p, phase = sys.argv[1], sys.argv[2]\n"
-      + "s = json.load(open(p))\n"
-      + "if s.get('workerPid'):\n"
-      + "    try: os.kill(s['workerPid'], signal.SIGKILL)\n"
-      + "    except OSError: pass\n"
-      + "s.update(phase='testing' if phase == 'dead' else phase, deadline=time.time() + 15 if phase != 'idle' else 0, token='runtime-trial', workerPid=0)\n"
-      + "if phase == 'dead':\n"
-      + "    s['snapshot'] = s.get('base', [])\n"
-      + "if phase == 'testing':\n"
-      + "    s['workerPid'] = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)', 'worker', '--token', 'runtime-trial'], start_new_session=True).pid\n"
-      + "s['revision'] = s.get('revision', 0) + 1\n"
-      + "json.dump(s, open(p, 'w'))\n"
-      + "PY", then)
+    sh("python3 - '" + service.statePath + "' " + phase + " <<'PY'\n" + "import json, os, signal, subprocess, sys, time\n" + "p, phase = sys.argv[1], sys.argv[2]\n" + "s = json.load(open(p))\n" + "if s.get('workerPid'):\n" + "    try: os.kill(s['workerPid'], signal.SIGKILL)\n" + "    except OSError: pass\n" + "s.update(phase='testing' if phase == 'dead' else phase, deadline=time.time() + 15 if phase != 'idle' else 0, token='runtime-trial', workerPid=0)\n" + "if phase == 'dead':\n" + "    s['snapshot'] = s.get('base', [])\n" + "if phase == 'testing':\n" + "    s['workerPid'] = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)', 'worker', '--token', 'runtime-trial'], start_new_session=True).pid\n" + "s['revision'] = s.get('revision', 0) + 1\n" + "json.dump(s, open(p, 'w'))\n" + "PY", then)
   }
   function leaderPanel() {
-    for (var i = 0; i < panelCount; i++) if (panel(i).member.isLeader) return panel(i)
+    for (var i = 0; i < panelCount; i++)
+      if (panel(i).member.isLeader)
+        return panel(i)
     return null
   }
   function openCount() {
     var count = 0
-    for (var i = 0; i < panelCount; i++) if (panel(i).opened) count++
+    for (var i = 0; i < panelCount; i++)
+      if (panel(i).opened)
+        count++
     return count
   }
   function leaders() {
     var count = 0
-    for (var i = 0; i < panelCount; i++) if (panel(i).member.isLeader) count++
+    for (var i = 0; i < panelCount; i++)
+      if (panel(i).member.isLeader)
+        count++
     return count
   }
 
@@ -145,10 +158,17 @@ ShellRoot {
     console.log("FOAMY READY")
     shell.runsBefore = shell.service.statusRuns
     var draft = shell.service.transaction.draft
-    external.payload = JSON.stringify({ id: draft[1].id, changes: { x: 4000 } })
+    external.payload = JSON.stringify({
+      id: draft[1].id,
+      changes: {
+        x: 4000
+      }
+    })
     external.command = shell.service.helper(["patch"])
     external.running = true
-    until(function() { return shell.service.transaction.draft[1].x === 4000 && displayIdle() }, "the draft written elsewhere", stepTwo)
+    until(function () {
+      return shell.service.transaction.draft[1].x === 4000 && displayIdle()
+    }, "the draft written elsewhere", stepTwo)
   }
 
   function stepTwo() {
@@ -156,25 +176,42 @@ ShellRoot {
     check(shell.service.statusRuns > shell.runsBefore, "the file watch ran status with every popup closed")
     eq(shell.service.changeCount, 1, "one unsaved change")
     // The helper replaces the file atomically; the watch must survive that.
-    external.payload = JSON.stringify({ id: shell.service.transaction.draft[1].id, changes: { x: 4100 } })
+    external.payload = JSON.stringify({
+      id: shell.service.transaction.draft[1].id,
+      changes: {
+        x: 4100
+      }
+    })
     external.running = true
-    until(function() { return shell.service.transaction.draft[1].x === 4100 && displayIdle() }, "the second write", stepTwoB)
+    until(function () {
+      return shell.service.transaction.draft[1].x === 4100 && displayIdle()
+    }, "the second write", stepTwoB)
   }
 
   function stepTwoB() {
     eq(shell.service.transaction.draft[1].x, 4100, "a second write arrives too (watch survives the atomic replace)")
     shell.runsBefore = shell.service.statusRuns
-    shell.service.hyprlandEvents.onRawEvent({ name: "focusedmon" })
-    shell.service.hyprlandEvents.onRawEvent({ name: "workspacev2" })
+    shell.service.hyprlandEvents.onRawEvent({
+      name: "focusedmon"
+    })
+    shell.service.hyprlandEvents.onRawEvent({
+      name: "workspacev2"
+    })
     // Four times the 150 ms debounce: a status these events started would show.
     wait.after(600, stepThree)
   }
 
   function stepThree() {
     eq(shell.service.statusRuns, shell.runsBefore, "focus and workspace events do not run status")
-    shell.service.hyprlandEvents.onRawEvent({ name: "monitoraddedv2" })
-    shell.service.hyprlandEvents.onRawEvent({ name: "configreloaded" })
-    until(function() { return shell.service.statusRuns > shell.runsBefore && displayIdle() }, "the output events' status", stepFour)
+    shell.service.hyprlandEvents.onRawEvent({
+      name: "monitoraddedv2"
+    })
+    shell.service.hyprlandEvents.onRawEvent({
+      name: "configreloaded"
+    })
+    until(function () {
+      return shell.service.statusRuns > shell.runsBefore && displayIdle()
+    }, "the output events' status", stepFour)
   }
 
   function stepFour() {
@@ -196,8 +233,12 @@ ShellRoot {
   }
   function inflightC() {
     eq(shell.service.commandProc.running, true, "still in flight when the event arrives")
-    shell.service.hyprlandEvents.onRawEvent({ name: "monitoraddedv2" })
-    until(function() { return shell.service.statusRuns >= shell.runsBefore + 2 && displayIdle() }, "the follow-up run", inflightD)
+    shell.service.hyprlandEvents.onRawEvent({
+      name: "monitoraddedv2"
+    })
+    until(function () {
+      return shell.service.statusRuns >= shell.runsBefore + 2 && displayIdle()
+    }, "the follow-up run", inflightD)
   }
   function inflightD() {
     eq(shell.service.liveMonitors[2].y, 100, "the change made during the run arrives")
@@ -205,19 +246,21 @@ ShellRoot {
     eq(shell.service.statusPending, false, "nothing left pending")
     // Every output gone for a moment (a KVM switch, undocking): that status
     // run fails, and the next good one must clear its error.
-    shell.sh("rm -f \"$FOAMY_CALLS.hyprdelay\"; cd \"$FOAMY_FAKEBIN\" && cp monitors.json monitors.json.kept && printf '[]' > monitors.json", function() {
+    shell.sh("rm -f \"$FOAMY_CALLS.hyprdelay\"; cd \"$FOAMY_FAKEBIN\" && cp monitors.json monitors.json.kept && printf '[]' > monitors.json", function () {
       shell.afterStatus(statusErrorA)
     })
   }
   function statusErrorA() {
     eq(shell.service.error, "No connected displays", "a failed status run shows its error")
-    shell.sh("cd \"$FOAMY_FAKEBIN\" && mv monitors.json.kept monitors.json", function() { shell.afterStatus(statusErrorB) })
+    shell.sh("cd \"$FOAMY_FAKEBIN\" && mv monitors.json.kept monitors.json", function () {
+      shell.afterStatus(statusErrorB)
+    })
   }
   function statusErrorB() {
     eq(shell.service.error, "", "the next good status run clears it")
     eq(shell.service.liveMonitors.length, 3, "the displays are back")
     panel(0).open()
-    until(function() {
+    until(function () {
       var view = panel(0).popup.bodyItem
       return view && view.brightnessAvailable && displayIdle() && brightnessIdle()
     }, "the popup's brightness read", stepFive)
@@ -226,7 +269,9 @@ ShellRoot {
   function afterStatus(next) {
     var before = service.statusRuns
     service.refresh()
-    until(function() { return service.statusRuns > before && displayIdle() }, "a status run", function() {
+    until(function () {
+      return service.statusRuns > before && displayIdle()
+    }, "a status run", function () {
       // One more turn after the run ends, so its stdout has been handled too.
       wait.after(100, next)
     })
@@ -237,7 +282,10 @@ ShellRoot {
     var view = first.popup.bodyItem
     check(view !== null, "body built on open")
     eq(shell.service.demanded, true, "open popup raises demand")
-    if (!view) { shell.finish(); return }
+    if (!view) {
+      shell.finish()
+      return
+    }
     eq(view.selectedMonitor, shell.service.transaction.draft[0].id, "the focused display is selected")
     eq(view.brightnessAvailable, true, "brightness read for the open popup")
     eq(view.brightnessPercent, 50, "brightness value")
@@ -258,7 +306,9 @@ ShellRoot {
     view.place("box:1")
     shell.key(view, "m")
     check(view.moving !== "", "m picks up the display under the cursor")
-    var before = shell.service.transaction.draft.find(function(m) { return m.name === view.moving }).x
+    var before = shell.service.transaction.draft.find(function (m) {
+      return m.name === view.moving
+    }).x
     // Three presses before the helper answers still add up to 30 px.
     view.moveRequested(1, 0)
     view.moveRequested(1, 0)
@@ -279,21 +329,26 @@ ShellRoot {
     // IPC `open` as the first action builds the lazy body.
     panel(1).open()
     // Brightness from three bars at once: one DDC job at a time.
-    for (var i = 0; i < 3; i++) shell.service.changeBrightness(shell.service.liveMonitors[i].name, { delta: 5 }, panel(i))
+    for (var i = 0; i < 3; i++)
+      shell.service.changeBrightness(shell.service.liveMonitors[i].name, {
+        delta: 5
+      }, panel(i))
     eq(first.brightnessIpc("abc"), "error: expected a percentage such as 40, +5 or -5", "IPC rejects junk")
-    until(function() {
-      var moved = shell.service.transaction.draft.find(function(m) { return m.name === "DP-1" })
-      return moved.x === shell.runsBefore + 30 && displayIdle() && brightnessIdle() && shell.service.brightness["DP-2"]
-        && shell.service.brightness["DP-2"].percent === 55
+    until(function () {
+      var moved = shell.service.transaction.draft.find(function (m) {
+        return m.name === "DP-1"
+      })
+      return moved.x === shell.runsBefore + 30 && displayIdle() && brightnessIdle() && shell.service.brightness["DP-2"] && shell.service.brightness["DP-2"].percent === 55
     }, "the nudges and the wheel steps", stepSix)
   }
 
   function stepSix() {
     var draft = shell.service.transaction.draft
-    eq(draft.find(function(m) { return m.name === "DP-1" }).x, shell.runsBefore + 30, "three quick arrows nudge the display by 30 px")
+    eq(draft.find(function (m) {
+      return m.name === "DP-1"
+    }).x, shell.runsBefore + 30, "three quick arrows nudge the display by 30 px")
     eq(shell.service.brightness["DP-2"].percent, 55, "a wheel step before the first read lands after it")
-    check(mockBar.summoned.length >= 1 && mockBar.summoned[0].id === "omarchy.osd" && mockBar.summoned[0].payload.icon === "brightness",
-      "the wheel shows the Omarchy OSD: " + JSON.stringify(mockBar.summoned))
+    check(mockBar.summoned.length >= 1 && mockBar.summoned[0].id === "omarchy.osd" && mockBar.summoned[0].payload.icon === "brightness", "the wheel shows the Omarchy OSD: " + JSON.stringify(mockBar.summoned))
     eq(shell.service.brightnessProc.running, false, "brightness queue drained")
     var second = panel(1).popup.bodyItem
     check(second !== null, "the body builds on a fresh panel")
@@ -301,33 +356,57 @@ ShellRoot {
     // The level changed elsewhere (laptop keys, the monitor's buttons) while
     // every popup was closed: a wheel step after the burst re-reads first.
     var aged = Object.assign({}, shell.service.brightness)
-    aged["DP-2"] = { available: true, percent: 55, at: Date.now() - 10000 }
+    aged["DP-2"] = {
+      available: true,
+      percent: 55,
+      at: Date.now() - 10000
+    }
     shell.service.brightness = aged
     shell.sh("printf 80 > \"$FOAMY_CALLS.brightness.DP-2\"", stepSixB)
   }
 
   function stepSixB() {
-    eq(shell.service.changeBrightness("DP-2", { delta: 5 }, panel(2)), 0, "a stale level is read again before stepping")
-    until(function() { return brightnessIdle() && shell.service.brightness["DP-2"].percent === 85 }, "the re-read step", stepSixC)
+    eq(shell.service.changeBrightness("DP-2", {
+      delta: 5
+    }, panel(2)), 0, "a stale level is read again before stepping")
+    until(function () {
+      return brightnessIdle() && shell.service.brightness["DP-2"].percent === 85
+    }, "the re-read step", stepSixC)
   }
 
   function stepSixC() {
     eq(shell.service.brightness["DP-2"].percent, 85, "the step lands on the fresh level (80 + 5)")
-    eq(shell.service.changeBrightness("DP-2", { delta: 5 }, panel(2)), 90, "steps within the burst reuse it")
+    eq(shell.service.changeBrightness("DP-2", {
+      delta: 5
+    }, panel(2)), 90, "steps within the burst reuse it")
     // An explicit level queued behind a read keeps later steps relative to it.
     var unknown = Object.assign({}, shell.service.brightness)
     delete unknown["DP-1"]
     shell.service.brightness = unknown
-    eq(shell.service.changeBrightness("DP-1", { value: 40 }, null), 0, "an unread display queues the level")
-    eq(shell.service.changeBrightness("DP-1", { delta: 5 }, null), 0, "and the following step")
+    eq(shell.service.changeBrightness("DP-1", {
+      value: 40
+    }, null), 0, "an unread display queues the level")
+    eq(shell.service.changeBrightness("DP-1", {
+      delta: 5
+    }, null), 0, "and the following step")
     // A step waiting on a stale reading, then an explicit level: the level wins for good.
     var stale = Object.assign({}, shell.service.brightness)
-    stale["eDP-1"] = { available: true, percent: 30, at: Date.now() - 10000 }
+    stale["eDP-1"] = {
+      available: true,
+      percent: 30,
+      at: Date.now() - 10000
+    }
     shell.service.brightness = stale
-    eq(shell.service.changeBrightness("eDP-1", { delta: 5 }, null), 0, "a step on a stale reading waits for a read")
-    eq(shell.service.changeBrightness("eDP-1", { value: 40 }, null), 40, "an explicit level is written at once")
+    eq(shell.service.changeBrightness("eDP-1", {
+      delta: 5
+    }, null), 0, "a step on a stale reading waits for a read")
+    eq(shell.service.changeBrightness("eDP-1", {
+      value: 40
+    }, null), 40, "an explicit level is written at once")
     eq(shell.service.brightnessAfterRead["eDP-1"], undefined, "and supersedes the waiting step")
-    until(function() { return brightnessIdle() && Object.keys(shell.service.brightnessAfterRead).length === 0 }, "the queued levels", hangA)
+    until(function () {
+      return brightnessIdle() && Object.keys(shell.service.brightnessAfterRead).length === 0
+    }, "the queued levels", hangA)
   }
 
   // ---- A hung DDC job (fake: $FOAMY_CALLS.ddchang, ignores SIGTERM) ----
@@ -346,15 +425,21 @@ ShellRoot {
     var unknown = Object.assign({}, shell.service.brightness)
     delete unknown["DP-1"]
     shell.service.brightness = unknown
-    eq(shell.service.changeBrightness("DP-1", { delta: 5 }, null), 0, "a step on an unread display waits for its read")
+    eq(shell.service.changeBrightness("DP-1", {
+      delta: 5
+    }, null), 0, "a step on an unread display waits for its read")
     // The fake ignores SIGTERM, so the job lives until the SIGKILL at 3 s.
     wait.after(600, hangC)
   }
   function hangC() {
     eq(shell.service.brightnessProc.running, true, "the read hangs")
-    eq(shell.service.changeBrightness("eDP-1", { value: 30 }, null), 30, "a later level is accepted")
-    shell.sh("rm -f \"$FOAMY_CALLS.ddchang\"", function() {
-      until(function() { return brightnessIdle() && shell.service.brightness["DP-1"] !== undefined }, "the hung read's deadline", hangD)
+    eq(shell.service.changeBrightness("eDP-1", {
+      value: 30
+    }, null), 30, "a later level is accepted")
+    shell.sh("rm -f \"$FOAMY_CALLS.ddchang\"", function () {
+      until(function () {
+        return brightnessIdle() && shell.service.brightness["DP-1"] !== undefined
+      }, "the hung read's deadline", hangD)
     })
   }
   function hangD() {
@@ -369,30 +454,32 @@ ShellRoot {
 
   // ---- Brightness and Advanced errors clear after the next good job ----
   // Fakes: $FOAMY_CALLS.ddcfail refuses brightness writes, .textfail the text size.
-  function advancedIdle() { return !shell.service.advancedBusy && displayIdle() }
+  function advancedIdle() {
+    return !shell.service.advancedBusy && displayIdle()
+  }
   function errorsA() {
-    shell.sh("touch \"$FOAMY_CALLS.ddcfail\"", function() {
+    shell.sh("touch \"$FOAMY_CALLS.ddcfail\"", function () {
       eq(shell.service.setBrightness("DP-2", 70), 70, "a level the display will refuse")
       until(brightnessIdle, "the refused write", errorsB)
     })
   }
   function errorsB() {
     eq(shell.service.error, "DDC write failed on DP-2", "a failed brightness write shows its error")
-    shell.sh("rm -f \"$FOAMY_CALLS.ddcfail\"", function() {
+    shell.sh("rm -f \"$FOAMY_CALLS.ddcfail\"", function () {
       shell.service.setBrightness("DP-2", 75)
       until(brightnessIdle, "the next brightness write", errorsC)
     })
   }
   function errorsC() {
     eq(shell.service.error, "", "the next good brightness write clears it")
-    shell.sh("touch \"$FOAMY_CALLS.textfail\"", function() {
+    shell.sh("touch \"$FOAMY_CALLS.textfail\"", function () {
       shell.service.setTextSize(12)
       until(advancedIdle, "the refused text size", errorsD)
     })
   }
   function errorsD() {
     eq(shell.service.error, "text size refused", "a failed Advanced job shows its error")
-    shell.sh("rm -f \"$FOAMY_CALLS.textfail\"", function() {
+    shell.sh("rm -f \"$FOAMY_CALLS.textfail\"", function () {
       shell.service.setTextSize(12)
       until(advancedIdle, "the next text size", errorsE)
     })
@@ -400,11 +487,11 @@ ShellRoot {
   function errorsE() {
     eq(shell.service.error, "", "the next good Advanced job clears it")
     // An error that replaced the brightness one since is not its to clear.
-    shell.sh("touch \"$FOAMY_CALLS.ddcfail\"", function() {
+    shell.sh("touch \"$FOAMY_CALLS.ddcfail\"", function () {
       shell.service.setBrightness("DP-2", 80)
-      until(brightnessIdle, "another refused write", function() {
+      until(brightnessIdle, "another refused write", function () {
         shell.service.error = "A display test is already running"
-        shell.sh("rm -f \"$FOAMY_CALLS.ddcfail\"", function() {
+        shell.sh("rm -f \"$FOAMY_CALLS.ddcfail\"", function () {
           shell.service.setBrightness("DP-2", 85)
           until(brightnessIdle, "a good write after another error", errorsF)
         })
@@ -435,7 +522,9 @@ ShellRoot {
     eq(shell.service.wirelessWanted, true, "the unplugged bar wanted Wireless")
     eq(shell.service.arrangementDragActive, true, "and was dragging")
     shell.panelCount = 2
-    until(function() { return shell.service.members === 2 && !shell.service.scanning && displayIdle() }, "the unplugged bar", lifeB)
+    until(function () {
+      return shell.service.members === 2 && !shell.service.scanning && displayIdle()
+    }, "the unplugged bar", lifeB)
   }
   function lifeB() {
     eq(shell.service.members, 2, "two bars left")
@@ -447,7 +536,9 @@ ShellRoot {
     eq(shell.service.teardowns, 0, "other bars keep the service")
     shell.runsBefore = shell.service.statusRuns
     shell.service.refresh()
-    until(function() { return shell.service.statusRuns > shell.runsBefore && displayIdle() }, "the status after the drag", lifeC)
+    until(function () {
+      return shell.service.statusRuns > shell.runsBefore && displayIdle()
+    }, "the status after the drag", lifeC)
   }
   function lifeC() {
     eq(shell.service.statusRuns, shell.runsBefore + 1, "status runs again after the dragging view is gone")
@@ -458,7 +549,9 @@ ShellRoot {
   }
   function lifeD() {
     shell.panelCount = 3
-    until(function() { return shell.service.members === 3 && shell.leaders() === 1 }, "the rebuilt bars", lifeE)
+    until(function () {
+      return shell.service.members === 3 && shell.leaders() === 1
+    }, "the rebuilt bars", lifeE)
   }
   function lifeE() {
     eq(shell.service.members, 3, "bars rebuilt")
@@ -470,8 +563,10 @@ ShellRoot {
     // ---- A running trial against every UI state ----
     shell.leaderPanel().open()
     // The trial worker's phase change, written to the helper's state file.
-    shell.setPhase("testing", function() {
-      until(function() { return shell.service.testing && shell.leaderPanel().opened && displayIdle() }, "the trial", trialA)
+    shell.setPhase("testing", function () {
+      until(function () {
+        return shell.service.testing && shell.leaderPanel().opened && displayIdle()
+      }, "the trial", trialA)
     })
   }
   function trialA() {
@@ -485,37 +580,48 @@ ShellRoot {
     view.setTab("Wireless")
     check(view.footerShown, "and on Wireless")
     shell.leaderPanel().close()
-    until(function() { return shell.openCount() === 1 }, "the trial popup to reopen", trialB, 5000)
+    until(function () {
+      return shell.openCount() === 1
+    }, "the trial popup to reopen", trialB, 5000)
   }
   function trialB() {
     eq(shell.openCount(), 1, "closing the popup during a trial reopens it")
     var view = shell.leaderPanel().popup.bodyItem
     eq(view.cursorKey, "revert", "the reopened trial lands on Revert")
-    shell.setPhase("idle", function() {
-      until(function() { return !shell.service.testing && displayIdle() }, "the trial's end", trialC)
+    shell.setPhase("idle", function () {
+      until(function () {
+        return !shell.service.testing && displayIdle()
+      }, "the trial's end", trialC)
     })
   }
   function trialC() {
     eq(shell.service.testing, false, "trial over")
     // A trial whose worker is gone (killed, crashed): the busy poll's next
     // status reverts it and says so, in the popup's language.
-    shell.setPhase("dead", function() {
-      until(function() { return shell.service.transaction.error !== "" && !shell.service.busy && displayIdle() }, "the dead trial's recovery", trialD)
+    shell.setPhase("dead", function () {
+      until(function () {
+        return shell.service.transaction.error !== "" && !shell.service.busy && displayIdle()
+      }, "the dead trial's recovery", trialD)
     })
   }
   function trialD() {
     eq(shell.service.transaction.phase, "idle", "a dead trial goes idle")
     var view = shell.leaderPanel().popup.bodyItem
-    eq(view.tr(view.actionError), shell.lang === "no" ? "Skjermtesten stoppet uventet. De forrige innstillingene ble gjenopprettet."
-      : "The display test stopped unexpectedly. The previous settings were restored.", "the recovery says so")
+    eq(view.tr(view.actionError), shell.lang === "no" ? "Skjermtesten stoppet uventet. De forrige innstillingene ble gjenopprettet." : "The display test stopped unexpectedly. The previous settings were restored.", "the recovery says so")
     shell.leaderPanel().close()
-    until(function() { return !shell.service.scanning }, "the scan to stop with the last popup", wifiA)
+    until(function () {
+      return !shell.service.scanning
+    }, "the scan to stop with the last popup", wifiA)
   }
 
   // ---- Wireless receivers cached in the service (2-minute TTL) ----
   // The fake FluxCast lists $FOAMY_CALLS.peers after $FOAMY_CALLS.scandelay s.
   property int scansBefore: 0
-  function addresses() { return shell.service.wirelessPeers.map(function(p) { return p.address }).join(",") }
+  function addresses() {
+    return shell.service.wirelessPeers.map(function (p) {
+      return p.address
+    }).join(",")
+  }
   function wifiA() {
     eq(shell.service.scanning, false, "no scan left over before the cache checks")
     shell.service.wirelessPeers = []
@@ -527,7 +633,9 @@ ShellRoot {
     panel(0).open()
     panel(0).popup.bodyItem.setTab("Wireless")
     // Process.running notifies once the process has started.
-    until(function() { return panel(0).popup.bodyItem.scanSpinning }, "the first scan", wifiB2)
+    until(function () {
+      return panel(0).popup.bodyItem.scanSpinning
+    }, "the first scan", wifiB2)
   }
   function wifiB2() {
     var view = panel(0).popup.bodyItem
@@ -536,7 +644,9 @@ ShellRoot {
     eq(view.itemFor("scan").spinning, true, "FoamyAction spinning is set")
     eq(view.itemFor("scan").actionEnabled, false, "Scan is inert while it runs")
     eq(view.scanIndicatorShown, true, "an empty list shows the searching row")
-    until(function() { return shell.service.scanRunning }, "the scan process", wifiC)
+    until(function () {
+      return shell.service.scanRunning
+    }, "the scan process", wifiC)
   }
   function wifiC() {
     eq(shell.service.scanRunning, true, "the scan runs")
@@ -545,7 +655,9 @@ ShellRoot {
     shell.service.checkWireless()
     shell.service.startWirelessScan()
     eq(shell.service.wirelessScanRuns, shell.scansBefore + 1, "still one scan for every bar")
-    until(function() { return !shell.service.scanning && shell.service.wirelessScanState === "results" }, "the scan's results", wifiD)
+    until(function () {
+      return !shell.service.scanning && shell.service.wirelessScanState === "results"
+    }, "the scan's results", wifiD)
   }
   function wifiD() {
     var view = panel(0).popup.bodyItem
@@ -560,7 +672,7 @@ ShellRoot {
     eq(shell.service.demanded, false, "popup closed")
     eq(shell.service.wirelessPeers.length, 2, "closing the popup keeps the receivers in the service")
     // Next scan: one receiver gone, one renamed, one new (listed first).
-    shell.sh("printf '[1] 0A:0B:0C:0D:0E:0F Den via NetworkManager\\n[2] 02:11:22:33:44:55 Projector via NetworkManager\\n' > \"$FOAMY_CALLS.peers\"; printf 1.5 > \"$FOAMY_CALLS.scandelay\"", function() {
+    shell.sh("printf '[1] 0A:0B:0C:0D:0E:0F Den via NetworkManager\\n[2] 02:11:22:33:44:55 Projector via NetworkManager\\n' > \"$FOAMY_CALLS.peers\"; printf 1.5 > \"$FOAMY_CALLS.scandelay\"", function () {
       // Old enough for a refresh on reopen, well inside the TTL.
       shell.service.wirelessScannedAt -= 30000
       wait.after(1500, wifiE)
@@ -576,7 +688,9 @@ ShellRoot {
     eq(shell.addresses(), "7A:2D:91:40:0B:CE,02:11:22:33:44:55", "the reopened popup shows the cached list at once")
     view.place("peer:1")
     check(view.itemFor("peer:1") !== null, "cached receivers are listed")
-    until(function() { return panel(1).popup.bodyItem.scanSpinning }, "the refresh", wifiE2)
+    until(function () {
+      return panel(1).popup.bodyItem.scanSpinning
+    }, "the refresh", wifiE2)
   }
   function wifiE2() {
     var view = panel(1).popup.bodyItem
@@ -585,12 +699,16 @@ ShellRoot {
     eq(view.scanSpinning, true, "only the Scan glyph spins")
     eq(view.scanIndicatorShown, false, "no searching row over a cached list")
     check(view.stops.indexOf("peer:1") > 0, "cached receivers keep cursor stops during the refresh")
-    until(function() { return shell.service.scanRunning }, "the refresh's scan process", wifiF)
+    until(function () {
+      return shell.service.scanRunning
+    }, "the refresh's scan process", wifiF)
   }
   function wifiF() {
     eq(shell.service.wirelessScanRuns, shell.scansBefore + 2, "one refresh")
     eq(shell.addresses(), "7A:2D:91:40:0B:CE,02:11:22:33:44:55", "the list holds still while it refreshes")
-    until(function() { return !shell.service.scanning && shell.service.wirelessScanState === "results" }, "the refresh's results", wifiG)
+    until(function () {
+      return !shell.service.scanning && shell.service.wirelessScanState === "results"
+    }, "the refresh's results", wifiG)
   }
   function wifiG() {
     var view = panel(1).popup.bodyItem
@@ -608,19 +726,25 @@ ShellRoot {
     panel(1).open()
     eq(shell.service.wirelessPeers.length, 0, "a list older than the TTL is discarded on open")
     eq(shell.service.wirelessScannedAt, 0, "and its timestamp with it")
-    until(function() { return panel(1).popup.bodyItem.scanIndicatorShown }, "the new scan", wifiG2)
+    until(function () {
+      return panel(1).popup.bodyItem.scanIndicatorShown
+    }, "the new scan", wifiG2)
   }
   function wifiG2() {
     eq(panel(1).popup.bodyItem.scanIndicatorShown, true, "the searching row shows for the new scan")
-    until(function() { return !shell.service.scanning && shell.service.wirelessPeers.length === 2 }, "the new scan's results", wifiH)
+    until(function () {
+      return !shell.service.scanning && shell.service.wirelessPeers.length === 2
+    }, "the new scan's results", wifiH)
   }
   function wifiH() {
     eq(shell.service.wirelessPeers.length, 2, "the new scan lists the receivers")
     // Picking a receiver during a refresh stops the scan, then casts.
-    shell.sh("printf 5 > \"$FOAMY_CALLS.scandelay\"", function() {
+    shell.sh("printf 5 > \"$FOAMY_CALLS.scandelay\"", function () {
       shell.service.wirelessScannedAt -= 30000
       panel(1).popup.bodyItem.scanOrStop()
-      until(function() { return shell.service.scanRunning }, "the Scan button's refresh", wifiJ)
+      until(function () {
+        return shell.service.scanRunning
+      }, "the Scan button's refresh", wifiJ)
     })
   }
   function wifiJ() {
@@ -629,7 +753,9 @@ ShellRoot {
     eq(shell.service.wirelessPeers.length, 2, "the Scan button keeps the list too")
     view.connectPeer(shell.service.wirelessPeers[0])
     check(shell.service.pendingCast !== null, "the pick waits for the scan to stop")
-    until(function() { return !shell.service.scanRunning && shell.service.pendingCast === null && shell.service.castRunning }, "the cast after the scan", wifiK)
+    until(function () {
+      return !shell.service.scanRunning && shell.service.pendingCast === null && shell.service.castRunning
+    }, "the cast after the scan", wifiK)
   }
   function wifiK() {
     eq(shell.service.scanRunning, false, "the refresh was stopped")
@@ -638,8 +764,10 @@ ShellRoot {
     eq(shell.service.wirelessPeers.length, 2, "a stopped refresh keeps the list")
     shell.service.stopCast()
     panel(1).close()
-    shell.sh("rm -f \"$FOAMY_CALLS.peers\" \"$FOAMY_CALLS.scandelay\"; touch \"$FOAMY_CALLS.stubborn\"", function() {
-      until(function() { return !shell.service.castRunning }, "the cast to stop", scanStopA)
+    shell.sh("rm -f \"$FOAMY_CALLS.peers\" \"$FOAMY_CALLS.scandelay\"; touch \"$FOAMY_CALLS.stubborn\"", function () {
+      until(function () {
+        return !shell.service.castRunning
+      }, "the cast to stop", scanStopA)
     })
   }
 
@@ -649,9 +777,12 @@ ShellRoot {
   function scanStopA() {
     var watchdog = shell.service.scanStopWatchdog
     check(watchdog !== undefined, "the scan has a stop watchdog")
-    if (watchdog) watchdog.interval = 500
+    if (watchdog)
+      watchdog.interval = 500
     shell.service.startWirelessScan()
-    until(function() { return shell.service.scanRunning }, "the stubborn scan", function() {
+    until(function () {
+      return shell.service.scanRunning
+    }, "the stubborn scan", function () {
       // Let FluxCast start and install its handlers before the stop.
       wait.after(300, scanStopB)
     })
@@ -660,15 +791,19 @@ ShellRoot {
     shell.service.cancelWirelessScan()
     var watchdog = shell.service.scanStopWatchdog
     eq(watchdog && watchdog.running, true, "a stopped scan arms its watchdog")
-    wait.waitFor(function() { return !shell.service.scanRunning }, 6000, function(ok) {
+    wait.waitFor(function () {
+      return !shell.service.scanRunning
+    }, 6000, function (ok) {
       check(ok, "a scan that ignores its stop ends at the watchdog's second signal")
       eq(watchdog && watchdog.running, false, "the watchdog stops with the scan")
-      eq(shell.service.wirelessScanState !== "error" && shell.service.wirelessScanState !== "scanning", true,
-        "a stopped scan is no failure: " + shell.service.wirelessScanState)
-      if (watchdog) watchdog.interval = 12000
-      shell.sh("rm -f \"$FOAMY_CALLS.stubborn\"", function() {
+      eq(shell.service.wirelessScanState !== "error" && shell.service.wirelessScanState !== "scanning", true, "a stopped scan is no failure: " + shell.service.wirelessScanState)
+      if (watchdog)
+        watchdog.interval = 12000
+      shell.sh("rm -f \"$FOAMY_CALLS.stubborn\"", function () {
         shell.panelCount = 0
-        until(function() { return shell.service.teardowns === 1 && !shell.service.scanRunning && !shell.service.castRunning }, "the teardown", stepEight)
+        until(function () {
+          return shell.service.teardowns === 1 && !shell.service.scanRunning && !shell.service.castRunning
+        }, "the teardown", stepEight)
       })
     })
   }
@@ -686,7 +821,10 @@ ShellRoot {
   // Runs a shell script; then() (optional) once it has exited.
   function sh(script, then) {
     var p = Qt.createQmlObject('import Quickshell.Io; Process {}', shell)
-    if (then) p.exited.connect(function() { then() })
+    if (then)
+      p.exited.connect(function () {
+        then()
+      })
     p.command = ["sh", "-c", script]
     p.running = true
   }
@@ -694,6 +832,9 @@ ShellRoot {
   property int holdMs: Number(Quickshell.env("FOAMY_HOLD_MS") || 0)
   function finish() {
     console.log("FOAMY RESULT " + host + "/" + lang + " " + checks + " checks, " + failures + " failures")
-    wait.after(Math.max(1, shell.holdMs), function() { console.log("FOAMY DONE"); Qt.quit() })
+    wait.after(Math.max(1, shell.holdMs), function () {
+      console.log("FOAMY DONE")
+      Qt.quit()
+    })
   }
 }

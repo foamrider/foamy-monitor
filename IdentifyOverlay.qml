@@ -40,8 +40,12 @@ Variants {
         font.family: FoamyStyle.fontFamily
         font.pixelSize: FoamyStyle.font.display
         text: {
-          var live = MonitorService.liveMonitors.find(function(m) { return m.name === identifyWindow.modelData.name })
-          return FoamyI18n.t(Model.friendlyMonitorLabel(live || { name: identifyWindow.modelData.name }))
+          var live = MonitorService.liveMonitors.find(function (m) {
+            return m.name === identifyWindow.modelData.name
+          })
+          return FoamyI18n.t(Model.friendlyMonitorLabel(live || {
+            name: identifyWindow.modelData.name
+          }))
         }
       }
     }
