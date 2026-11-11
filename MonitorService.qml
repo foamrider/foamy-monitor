@@ -118,12 +118,21 @@ Singleton {
     enqueue("status")
     if (active && demanded && !cursorInfoProc.running) cursorInfoProc.running = true
   }
+  // The error a failed status run showed. A command's error (a rejected
+  // patch, apply or decision) stays until the next command, so a poll does
+  // not hide it; a status error (every output gone for a moment, a hyprctl
+  // timeout) is stale once a later status run succeeds.
+  property string statusError: ""
+  function commandFailed(message) {
+    error = message
+    statusError = commandProc.action === "status" ? message : ""
+  }
   function acceptResult(text) {
     if (helperUnavailable) return
     if (arrangementDragActive) { deferredResult = text; return }
     try {
       var result = JSON.parse(text)
-      if (!result.ok) { error = result.error; return }
+      if (!result.ok) { commandFailed(result.error); return }
       // A clean draft alone is not proof of a save: wait for Keep to finish successfully.
       if (busy && result.state.phase === "idle")
         displayChangesSaved = result.state.decision === "keep" && !result.state.error && result.state.token === transaction.token
@@ -132,11 +141,12 @@ Singleton {
       var gtk = result.gtkScale || { base: null, value: null, error: "Could not read GTK scale" }
       if (JSON.stringify(gtkScale) !== JSON.stringify(gtk)) gtkScale = gtk
       if (result.statePath && result.statePath !== statePath) statePath = result.statePath
-      if (commandProc.action !== "status") error = ""
+      if (commandProc.action !== "status" || error === statusError) error = ""
+      statusError = ""
       // The file moved past this answer while the command ran: another writer.
       if (fileRevision > (transaction.revision || 0)) statusSoon()
     } catch (e) {
-      error = "Could not read display settings: " + e
+      commandFailed("Could not read display settings: " + e)
     }
   }
   function flushCommands() {

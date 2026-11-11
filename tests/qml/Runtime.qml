@@ -195,9 +195,58 @@ ShellRoot {
       eq(shell.service.statusRuns, shell.runsBefore + 2, "exactly one follow-up run")
       eq(shell.service.statusPending, false, "nothing left pending")
       shell.sh("rm -f \"$FOAMY_CALLS.hyprdelay\"")
+      // Every output gone for a moment (a KVM switch, undocking): that status
+      // run fails, and the next good one must clear its error.
+      shell.sh("cd \"$FOAMY_FAKEBIN\" && cp monitors.json monitors.json.kept && printf '[]' > monitors.json")
+      statusErrorA.start()
+    }
+  }
+  Timer {
+    id: statusErrorA
+    interval: 300
+    onTriggered: shell.afterStatus(function() {
+      eq(shell.service.error, "No connected displays", "a failed status run shows its error")
+      shell.sh("cd \"$FOAMY_FAKEBIN\" && mv monitors.json.kept monitors.json")
+      statusErrorB.start()
+    })
+  }
+  Timer {
+    id: statusErrorB
+    interval: 300
+    onTriggered: shell.afterStatus(function() {
+      eq(shell.service.error, "", "the next good status run clears it")
+      eq(shell.service.liveMonitors.length, 3, "the displays are back")
       panel(0).open()
       stepFive.start()
+    })
+  }
+  // Runs one status and calls next once it has landed (polled, at most 10 s).
+  function afterStatus(next) {
+    statusWait.before = service.statusRuns
+    statusWait.next = next
+    statusWait.tries = 0
+    service.refresh()
+    statusWait.start()
+  }
+  Timer {
+    id: statusWait
+    property int before: 0
+    property var next: null
+    property int tries: 0
+    interval: 100
+    repeat: true
+    onTriggered: {
+      tries++
+      // One more poll after the run ends, so its stdout has been handled too.
+      if (tries <= 100 && (shell.service.statusRuns <= before || shell.service.commandProc.running || !settled)) {
+        settled = shell.service.statusRuns > before && !shell.service.commandProc.running
+        return
+      }
+      stop()
+      settled = false
+      next()
     }
+    property bool settled: false
   }
 
   Timer {
