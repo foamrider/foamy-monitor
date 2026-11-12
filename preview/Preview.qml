@@ -12,7 +12,7 @@ Item {
   property var previewStates: ["display", "trial", "advanced", "wireless", "wireless-scanning", "wireless-refreshing", "wireless-missing", "loading"]
   property string previewState: "display"
   property int settleMs: 700
-  readonly property Item popup: popup
+  readonly property var popup: previewPopup
   readonly property var service: Monitor.MonitorService
 
   function display(name, description, x, width, height, scale, focused) {
@@ -107,7 +107,7 @@ Item {
     service.wirelessScanState = service.previewScanning ? "scanning" : state === "wireless" ? "results" : state === "wireless-missing" ? "missing" : "idle"
     service.missingPackages = state === "wireless-missing" ? ["fluxcast-git"] : []
     service.wirelessError = state === "wireless-missing" ? "Please install fluxcast-git" : ""
-    var view = popup.bodyItem
+    var view = preview.popup.bodyItem
     if (!view)
       return
     view.selectedMonitor = loading ? "" : live[0].id
@@ -127,7 +127,7 @@ Item {
   onPreviewStateChanged: Qt.callLater(apply)
 
   FoamyPopup {
-    id: popup
+    id: previewPopup
     anchorItem: preview.anchorItem
     bar: preview.bar
     open: true

@@ -59,15 +59,4 @@ Panel.qml: missing-property: Member "selectedMonitor" not found on type "QQuickI
 Panel.qml: missing-property: Member "shell" not found on type "QObject" | bar.shell.summon("omarchy.osd", JSON.stringify({
 Panel.qml: missing-property: Member "shell" not found on type "QObject" | if (!bar || !bar.shell || typeof bar.shell.summon !== "function")
 Panel.qml: missing-property: Member "shell" not found on type "QObject" | if (!bar || !bar.shell || typeof bar.shell.summon !== "function")
-preview/Preview.qml: id-shadows-member: Id for object FoamyPopup shadows property "popup". Rename one or the other. | readonly property Item popup: popup
-preview/Preview.qml: id-shadows-member: Note: Id defined here | id: popup
-preview/Preview.qml: incompatible-type: Cannot assign binding of type FoamyPopup to QQuickItem | readonly property Item popup: popup
-preview/Preview.qml: missing-property: Member "activeTab" not found on type FoamyPopup::bodyItem with type QQuickItem | view.activeTab = state === "advanced" ? "Advanced" : state.indexOf("wireless") === 0 ? "Wireless" : "Display"
-preview/Preview.qml: missing-property: Member "now" not found on type FoamyPopup::bodyItem with type QQuickItem | view.now = Date.now()
-preview/Preview.qml: missing-property: Member "place" not found on type "QQuickItem" | view.place("")
-preview/Preview.qml: missing-property: Member "place" not found on type "QQuickItem" | view.place("peer:0")
-preview/Preview.qml: missing-property: Member "place" not found on type "QQuickItem" | view.place("resolution")
-preview/Preview.qml: missing-property: Member "place" not found on type "QQuickItem" | view.place("revert")
-preview/Preview.qml: missing-property: Member "place" not found on type "QQuickItem" | view.place("scan")
-preview/Preview.qml: missing-property: Member "selectedMonitor" not found on type FoamyPopup::bodyItem with type QQuickItem | view.selectedMonitor = loading ? "" : live[0].id
 preview/Preview.qml: unqualified: Unqualified access | host: mockHost
