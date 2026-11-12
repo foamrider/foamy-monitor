@@ -5,7 +5,7 @@
 crate native
 binary foamy-monitor-helper
 toolchain 1.99.1
-kit 0.8.0
-source 914a8657bfaf6b2de46b5aeb01ee6fdeb7779cffddf7af6e2377035d52c218c8
-88a2be11099ee215b3480a19b9dad37ce2cc69ab3d09d545587cfcf8217d4dcd  bin/aarch64/foamy-monitor-helper
-a19d28544bf4785478554da621dc16bfa8ba0e551d712644a7a50c62f522df76  bin/x86_64/foamy-monitor-helper
+kit 0.9.0
+source 34202d55a33418300b54630221d1948d8ad63e5ddbbfbdc7e6c765ee23da824f
+4b75517eab46407425872fc89570085a61030779c4fb3ead83ea554548a68d62  bin/aarch64/foamy-monitor-helper
+ca08d43540550a87d1b53cf7a39f730200bb46ae07a994fee73928084f9442aa  bin/x86_64/foamy-monitor-helper

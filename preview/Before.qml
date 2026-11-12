@@ -14,7 +14,9 @@ Item {
   property int settleMs: 3000
   readonly property Item popup: {
     var kids = FakeDisplay.overlay ? FakeDisplay.overlay.children : []
-    for (var i = 0; i < kids.length; i++) if (kids[i].objectName === "monitorPopup") return kids[i]
+    for (var i = 0; i < kids.length; i++)
+      if (kids[i].objectName === "monitorPopup")
+        return kids[i]
     return panel
   }
   onPreviewStateChanged: apply()
@@ -27,6 +29,9 @@ Item {
     parent: preview.anchorItem
     anchors.fill: parent
     bar: preview.bar
-    Component.onCompleted: { panel.open(); preview.apply() }
+    Component.onCompleted: {
+      panel.open()
+      preview.apply()
+    }
   }
 }

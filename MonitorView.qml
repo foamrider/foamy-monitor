@@ -37,11 +37,21 @@ PanelKeyCatcher {
   readonly property int changeCount: MonitorService.changeCount
   readonly property string actionError: MonitorService.error || transaction.error || ""
   readonly property int secondsLeft: Math.min(15, Math.max(0, Math.ceil(((transaction.deadline || 0) * 1000 - now) / 1000)))
-  readonly property var selected: transaction.draft.find(function(m) { return m.id === view.selectedMonitor }) || null
-  readonly property var selectedLive: MonitorService.liveMonitors.find(function(m) { return m.id === view.selectedMonitor }) || null
-  readonly property var enabledMonitorInfos: transaction.draft.filter(function(m) { return m.connected && !m.disabled && !m.mirrorOf })
-  readonly property var offlineMonitors: transaction.draft.filter(function(m) { return m.disabled || !m.connected || !!m.mirrorOf })
-  readonly property int activeCount: transaction.draft.filter(function(m) { return m.connected && !m.disabled }).length
+  readonly property var selected: transaction.draft.find(function (m) {
+    return m.id === view.selectedMonitor
+  }) || null
+  readonly property var selectedLive: MonitorService.liveMonitors.find(function (m) {
+    return m.id === view.selectedMonitor
+  }) || null
+  readonly property var enabledMonitorInfos: transaction.draft.filter(function (m) {
+    return m.connected && !m.disabled && !m.mirrorOf
+  })
+  readonly property var offlineMonitors: transaction.draft.filter(function (m) {
+    return m.disabled || !m.connected || !!m.mirrorOf
+  })
+  readonly property int activeCount: transaction.draft.filter(function (m) {
+    return m.connected && !m.disabled
+  }).length
   readonly property string brightnessTarget: selectedLive && !selectedLive.disabled ? selectedLive.name : ""
   readonly property var brightnessState: brightnessTarget ? MonitorService.brightness[brightnessTarget] || null : null
   readonly property bool brightnessAvailable: !!brightnessState && brightnessState.available
@@ -54,29 +64,49 @@ PanelKeyCatcher {
   readonly property bool scanSpinning: MonitorService.scanning && !MonitorService.castRunning
   readonly property bool scanIndicatorShown: scanSpinning && !MonitorService.wirelessRefreshing
   readonly property var stops: Model.viewStops(activeTab, testing, {
-    boxes: enabledMonitorInfos.length, offline: offlineMonitors.length,
+    boxes: enabledMonitorInfos.length,
+    offline: offlineMonitors.length,
     peers: MonitorService.castRunning ? 0 : MonitorService.wirelessPeers.length,
     changes: busy ? 0 : changeCount
   })
   readonly property string cursorKey: cursor.index >= 0 && cursor.index < stops.length ? stops[cursor.index] : ""
-  function hasCursor(key) { return cursorKey === key }
-  function hover(key) { var index = stops.indexOf(key); if (index >= 0) cursor.hover(index) }
-  function place(key) { var index = stops.indexOf(key); if (index >= 0) cursor.index = index }
-  function stopIndex(prefix) { return cursorKey.indexOf(prefix) === 0 ? Number(cursorKey.slice(prefix.length)) : -1 }
+  function hasCursor(key) {
+    return cursorKey === key
+  }
+  function hover(key) {
+    var index = stops.indexOf(key)
+    if (index >= 0)
+      cursor.hover(index)
+  }
+  function place(key) {
+    var index = stops.indexOf(key)
+    if (index >= 0)
+      cursor.index = index
+  }
+  function stopIndex(prefix) {
+    return cursorKey.indexOf(prefix) === 0 ? Number(cursorKey.slice(prefix.length)) : -1
+  }
 
-  FoamyCursor { id: cursor; count: view.stops.length }
+  FoamyCursor {
+    id: cursor
+    count: view.stops.length
+  }
 
   // Deferred work owned by this view: Qt.callLater would still run after the
   // view is destroyed (its bar removed on unplug); a child Timer dies with it.
   property var _deferred: []
-  function defer(fn) { _deferred.push(fn); deferTimer.restart() }
+  function defer(fn) {
+    _deferred.push(fn)
+    deferTimer.restart()
+  }
   Timer {
     id: deferTimer
     interval: 0
     onTriggered: {
       var pending = view._deferred
       view._deferred = []
-      for (var i = 0; i < pending.length; i++) pending[i]()
+      for (var i = 0; i < pending.length; i++)
+        pending[i]()
     }
   }
 
@@ -86,182 +116,379 @@ PanelKeyCatcher {
 
   // ---- Strings ------------------------------------------------------------
   function tr(text, values) {
-    // Helpers return English recovery messages plus opaque package/monitor details.
-    // Translate only known prefixes; never interpret or translate the detail itself.
+    // Helpers return English recovery messages plus opaque package/monitor
+    // details (and the service a cast's exit code). Translate only these
+    // known templates; never interpret or translate the detail (%1) itself.
     if (values === undefined) {
-      var prefixes = ["Please install ", "Could not read display settings: ",
-        "Unsupported scale for ", "Unsupported resolution or refresh rate for "]
-      for (var i = 0; i < prefixes.length; i++) {
-        if (String(text).indexOf(prefixes[i]) === 0)
-          return FoamyI18n.t(prefixes[i] + "%1", String(text).slice(prefixes[i].length))
+      var templates = ["Please install %1", "Could not read display settings: %1", "Unsupported scale for %1", "Unsupported resolution or refresh rate for %1", "Cast ended (%1)"]
+      var whole = String(text)
+      for (var i = 0; i < templates.length; i++) {
+        var parts = templates[i].split("%1")
+        if (whole.length > parts[0].length + parts[1].length && whole.indexOf(parts[0]) === 0 && whole.slice(whole.length - parts[1].length) === parts[1])
+          return FoamyI18n.t(templates[i], whole.slice(parts[0].length, whole.length - parts[1].length))
       }
     }
     return FoamyI18n.t(text, values)
   }
-  function friendlyDisplayName(monitor) { return tr(Model.friendlyMonitorLabel(monitor)) }
-  function peerLabel(peer) { return peer.name || tr("Wireless display") }
+  function friendlyDisplayName(monitor) {
+    return tr(Model.friendlyMonitorLabel(monitor))
+  }
+  function peerLabel(peer) {
+    return peer.name || tr("Wireless display")
+  }
   function wirelessPhaseLabel() {
     var phase = MonitorService.castPhase
-    if (phase === "casting") return tr("Casting to %1", MonitorService.castTargetName)
-    if (phase === "stopping") return tr("Stopping…")
-    if (phase === "error") return MonitorService.castDetail
+    if (phase === "casting")
+      return tr("Casting to %1", MonitorService.castTargetName)
+    if (phase === "stopping")
+      return tr("Stopping…")
+    if (phase === "error")
+      return MonitorService.castDetail
     return tr("Connecting to %1…", MonitorService.castTargetName)
   }
   readonly property var rotationOptions: [
-    { value: "0", label: "Landscape · 0°" }, { value: "1", label: "Portrait · 90°" },
-    { value: "2", label: "Landscape · 180°" }, { value: "3", label: "Portrait · 270°" },
-    { value: "4", label: "Flipped · 0°" }, { value: "5", label: "Flipped · 90°" },
-    { value: "6", label: "Flipped · 180°" }, { value: "7", label: "Flipped · 270°" }
+    {
+      value: "0",
+      label: "Landscape · 0°"
+    },
+    {
+      value: "1",
+      label: "Portrait · 90°"
+    },
+    {
+      value: "2",
+      label: "Landscape · 180°"
+    },
+    {
+      value: "3",
+      label: "Portrait · 270°"
+    },
+    {
+      value: "4",
+      label: "Flipped · 0°"
+    },
+    {
+      value: "5",
+      label: "Flipped · 90°"
+    },
+    {
+      value: "6",
+      label: "Flipped · 180°"
+    },
+    {
+      value: "7",
+      label: "Flipped · 270°"
+    }
   ]
-  readonly property var gtkScaleOptions: [1, 2, 3, 4].concat(gtkScale.value > 4 ? [gtkScale.value] : []).map(function(v) {
-    return { value: String(v), label: FoamyI18n.t("%1%", v * 100) }
+  readonly property var gtkScaleOptions: [1, 2, 3, 4].concat(gtkScale.value > 4 ? [gtkScale.value] : []).map(function (v) {
+    return {
+      value: String(v),
+      label: FoamyI18n.t("%1%", v * 100)
+    }
   })
-  function pxOptions(values) { return values.map(function(v) { return { value: v, label: FoamyI18n.t("%1 px", Number(v)) } }) }
-  readonly property var rateOptions: selected ? Model.refreshRatesFor(selected.availableModes, selected.width, selected.height).map(function(v) {
-    return { value: String(v), label: Model.formatHz(v) }
+  function pxOptions(values) {
+    return values.map(function (v) {
+      return {
+        value: v,
+        label: FoamyI18n.t("%1 px", Number(v))
+      }
+    })
+  }
+  readonly property var rateOptions: selected ? Model.refreshRatesFor(selected.availableModes, selected.width, selected.height).map(function (v) {
+    return {
+      value: String(v),
+      label: Model.formatHz(v)
+    }
   }) : []
   readonly property var scaleOptions: selected ? Model.scaleOptions(selected) : []
   readonly property string scaleValue: {
-    if (!selected) return ""
-    var option = scaleOptions.find(function(v) { return Math.abs(Number(v.value) - view.selected.scale) < 0.00001 })
+    if (!selected)
+      return ""
+    var option = scaleOptions.find(function (v) {
+      return Math.abs(Number(v.value) - view.selected.scale) < 0.00001
+    })
     return option ? option.value : String(selected.scale)
   }
-  readonly property var mirrorOptions: [{ value: "", label: tr("Extend") }].concat(transaction.draft.filter(function(m) {
+  readonly property var mirrorOptions: [
+    {
+      value: "",
+      label: tr("Extend")
+    }
+  ].concat(transaction.draft.filter(function (m) {
     return m.connected && !m.disabled && !m.mirrorOf && m.id !== view.selectedMonitor
-  }).map(function(m) { return { value: m.name, label: view.tr("Mirror %1", view.friendlyDisplayName(m)) } }))
+  }).map(function (m) {
+    return {
+      value: m.name,
+      label: view.tr("Mirror %1", view.friendlyDisplayName(m))
+    }
+  }))
 
   // ---- Actions ------------------------------------------------------------
-  function marked(field) { return selected && MonitorService.changesFor(selected).indexOf(field) >= 0 }
+  function marked(field) {
+    return selected && MonitorService.changesFor(selected).indexOf(field) >= 0
+  }
   function selectMonitor(id) {
     selectedMonitor = id
     defer(refreshBrightness)
   }
-  function refreshBrightness() { if (brightnessTarget && host.opened) MonitorService.readBrightness(brightnessTarget) }
+  function refreshBrightness() {
+    if (brightnessTarget && host.opened)
+      MonitorService.readBrightness(brightnessTarget)
+  }
   function edit(changes, monitor) {
     monitor = monitor || selected
-    if (!monitor || busy) return
-    MonitorService.enqueue("patch", { id: monitor.id, changes: changes })
+    if (!monitor || busy)
+      return
+    MonitorService.enqueue("patch", {
+      id: monitor.id,
+      changes: changes
+    })
   }
   function setResolution(value) {
     var size = value.split("x").map(Number)
     var rates = Model.refreshRatesFor(selected.availableModes, size[0], size[1])
     var scale = Model.validScale(selected.scale, size[0], size[1]) ? selected.scale : 1
-    edit({ width: size[0], height: size[1], refreshRate: Model.nearestRate(rates, selected.refreshRate), scale: scale })
+    edit({
+      width: size[0],
+      height: size[1],
+      refreshRate: Model.nearestRate(rates, selected.refreshRate),
+      scale: scale
+    })
   }
   function rightEdge(exclude) {
-    return enabledMonitorInfos.filter(function(m) { return m.id !== exclude }).reduce(function(x, m) {
+    return enabledMonitorInfos.filter(function (m) {
+      return m.id !== exclude
+    }).reduce(function (x, m) {
       return Math.max(x, m.x + Model.footprint(m).w)
     }, 0)
   }
   function toggleDisplay() {
-    if (!selected || !selected.connected || (!selected.disabled && activeCount <= 1)) return
-    var values = { disabled: !selected.disabled, mirrorOf: "" }
-    if (selected.disabled) { values.x = rightEdge(""); values.y = 0 }
+    if (!selected || !selected.connected || (!selected.disabled && activeCount <= 1))
+      return
+    var values = {
+      disabled: !selected.disabled,
+      mirrorOf: ""
+    }
+    if (selected.disabled) {
+      values.x = rightEdge("")
+      values.y = 0
+    }
     edit(values)
   }
   function setMirror(value) {
-    if (!selected) return
-    var values = { mirrorOf: value }
-    if (!value) { values.x = rightEdge(selectedMonitor); values.y = 0 }
+    if (!selected)
+      return
+    var values = {
+      mirrorOf: value
+    }
+    if (!value) {
+      values.x = rightEdge(selectedMonitor)
+      values.y = 0
+    }
     edit(values)
   }
   function moveMonitor(name, x, y) {
-    var monitor = transaction.draft.find(function(m) { return m.name === name })
-    if (monitor) edit({ x: Math.round(x), y: Math.round(y) }, monitor)
+    var monitor = transaction.draft.find(function (m) {
+      return m.name === name
+    })
+    if (monitor)
+      edit({
+        x: Math.round(x),
+        y: Math.round(y)
+      }, monitor)
   }
   function save() {
-    if (changeCount && !busy && !MonitorService.disconnectedDraft) MonitorService.enqueue("apply")
+    if (changeCount && !busy && !MonitorService.disconnectedDraft)
+      MonitorService.enqueue("apply")
   }
-  function decide(action) { MonitorService.enqueue(action, { token: transaction.token }) }
+  function decide(action) {
+    MonitorService.enqueue(action, {
+      token: transaction.token
+    })
+  }
   function scanOrStop() {
-    if (MonitorService.castRunning) MonitorService.stopCast()
-    else MonitorService.checkWireless()
+    if (MonitorService.castRunning)
+      MonitorService.stopCast()
+    else
+      MonitorService.checkWireless()
   }
   function connectPeer(peer) {
     var monitor = selectedLive && !selectedLive.disabled ? selectedLive.name : MonitorService.focusedMonitor
     MonitorService.connectWirelessPeer(peer, peerLabel(peer), monitor)
   }
   function setTab(tab) {
-    if (tabs.indexOf(tab) < 0) return
+    if (tabs.indexOf(tab) < 0)
+      return
     activeTab = tab
   }
   // Requests this view makes of the shared service, as demand that ends with
   // the view: Wireless shown (scan + dependency retries) and a drag in
   // progress (holds status results until the drop).
   property bool dragging: false
-  FoamyMember { id: wirelessDemand; scope: "monitor-wireless"; demanding: view.host.opened === true && view.activeTab === "Wireless" }
-  FoamyMember { id: dragDemand; scope: "monitor-drag"; demanding: view.dragging }
-  function dropdownFor(key) {
-    return ({ mode: modeField, resolution: resolutionField, rate: rateField, scale: scaleField, orientation: orientationField,
-      textSize: textSizeField, cursorSize: cursorSizeField, gtkScale: gtkScaleField })[key] || null
+  FoamyMember {
+    id: wirelessDemand
+    scope: "monitor-wireless"
+    demanding: view.host.opened === true && view.activeTab === "Wireless"
   }
-  function boxName(i) { var box = diagram.boxes[i]; return box ? box.name : "" }
+  FoamyMember {
+    id: dragDemand
+    scope: "monitor-drag"
+    demanding: view.dragging
+  }
+  function dropdownFor(key) {
+    return ({
+        mode: modeField,
+        resolution: resolutionField,
+        rate: rateField,
+        scale: scaleField,
+        orientation: orientationField,
+        textSize: textSizeField,
+        cursorSize: cursorSizeField,
+        gtkScale: gtkScaleField
+      })[key] || null
+  }
+  function boxName(i) {
+    var box = diagram.boxes[i]
+    return box ? box.name : ""
+  }
   function activateStop() {
     var key = cursorKey
     var field = dropdownFor(key)
-    if (field) { if (field.enabled) field.open(); return }
-    if (key.indexOf("tab:") === 0) setTab(key.slice(4))
-    else if (key.indexOf("box:") === 0) { var monitor = transaction.draft.find(function(m) { return m.name === view.boxName(view.stopIndex("box:")) }); if (monitor) selectMonitor(monitor.id) }
-    else if (key.indexOf("offline:") === 0) { var off = offlineMonitors[stopIndex("offline:")]; if (off) selectMonitor(off.id) }
-    else if (key.indexOf("peer:") === 0) connectPeer(MonitorService.wirelessPeers[stopIndex("peer:")])
-    else if (key === "identify") MonitorService.showIdentify()
-    else if (key === "power") toggleDisplay()
-    else if (key === "scan") scanOrStop()
-    else if (key === "discard") MonitorService.enqueue("discard")
-    else if (key === "save") save()
-    else if (key === "revert") decide("revert")
-    else if (key === "keep") decide("keep")
+    if (field) {
+      if (field.enabled)
+        field.open()
+      return
+    }
+    if (key.indexOf("tab:") === 0)
+      setTab(key.slice(4))
+    else if (key.indexOf("box:") === 0) {
+      var monitor = transaction.draft.find(function (m) {
+        return m.name === view.boxName(view.stopIndex("box:"))
+      })
+      if (monitor)
+        selectMonitor(monitor.id)
+    } else if (key.indexOf("offline:") === 0) {
+      var off = offlineMonitors[stopIndex("offline:")]
+      if (off)
+        selectMonitor(off.id)
+    } else if (key.indexOf("peer:") === 0)
+      connectPeer(MonitorService.wirelessPeers[stopIndex("peer:")])
+    else if (key === "identify")
+      MonitorService.showIdentify()
+    else if (key === "power")
+      toggleDisplay()
+    else if (key === "scan")
+      scanOrStop()
+    else if (key === "discard")
+      MonitorService.enqueue("discard")
+    else if (key === "save")
+      save()
+    else if (key === "revert")
+      decide("revert")
+    else if (key === "keep")
+      decide("keep")
   }
   function stepBrightness(direction) {
-    if (brightnessAvailable) MonitorService.setBrightness(brightnessTarget, brightnessPercent + direction * 5)
+    if (brightnessAvailable)
+      MonitorService.setBrightness(brightnessTarget, brightnessPercent + direction * 5)
   }
   // Key repeat outruns the patch helper, so nudges add up on an optimistic
   // position instead of re-reading a draft that has not caught up yet.
   property var movingAt: null
   onMovingChanged: {
-    var monitor = transaction.draft.find(function(m) { return m.name === view.moving })
-    movingAt = monitor ? { x: monitor.x, y: monitor.y } : null
+    var monitor = transaction.draft.find(function (m) {
+      return m.name === view.moving
+    })
+    movingAt = monitor ? {
+      x: monitor.x,
+      y: monitor.y
+    } : null
   }
   function nudge(dx, dy) {
-    if (!movingAt) { moving = ""; return }
-    movingAt = { x: movingAt.x + dx * 10, y: movingAt.y + dy * 10 }
+    if (!movingAt) {
+      moving = ""
+      return
+    }
+    movingAt = {
+      x: movingAt.x + dx * 10,
+      y: movingAt.y + dy * 10
+    }
     moveMonitor(moving, movingAt.x, movingAt.y)
   }
 
-  onMoveRequested: function(dx, dy) {
-    if (moving) { nudge(dx, dy); return }
+  onMoveRequested: function (dx, dy) {
+    if (moving) {
+      nudge(dx, dy)
+      return
+    }
     var key = cursorKey
     // The tabs are one row: j leaves it into the tab's content, k from the
     // content returns to the active tab.
-    if (dy > 0 && key.indexOf("tab:") === 0) { cursor.index = Math.min(stops.length - 1, stops.indexOf("tab:Wireless") + 1); return }
-    if (dy < 0 && cursor.index > 0 && stops[cursor.index - 1].indexOf("tab:") === 0) { place("tab:" + activeTab); return }
-    if (dy !== 0) { cursor.move(dy); return }
-    if (key === "brightness") stepBrightness(dx)
+    if (dy > 0 && key.indexOf("tab:") === 0) {
+      cursor.index = Math.min(stops.length - 1, stops.indexOf("tab:Wireless") + 1)
+      return
+    }
+    if (dy < 0 && cursor.index > 0 && stops[cursor.index - 1].indexOf("tab:") === 0) {
+      place("tab:" + activeTab)
+      return
+    }
+    if (dy !== 0) {
+      cursor.move(dy)
+      return
+    }
+    if (key === "brightness")
+      stepBrightness(dx)
     else if (key.indexOf("tab:") === 0) {
       var next = tabs[Math.max(0, Math.min(tabs.length - 1, tabs.indexOf(key.slice(4)) + dx))]
       setTab(next)
       place("tab:" + next)
-    } else cursor.move(dx)
+    } else
+      cursor.move(dx)
   }
-  onActivateRequested: { if (moving) moving = ""; else activateStop() }
+  onActivateRequested: {
+    if (moving)
+      moving = ""
+    else
+      activateStop()
+  }
   onCloseRequested: {
-    if (moving) moving = ""
-    else if (testing) decide("revert")
-    else host.close()
+    if (moving)
+      moving = ""
+    else if (testing)
+      decide("revert")
+    else
+      host.close()
   }
-  onTabRequested: function(direction) { host.switchPanel(direction) }
-  onTextKey: function(text, modifiers) {
-    if (busy) return
-    if (text === "\u0013" || ((modifiers & Qt.ControlModifier) && (text === "s" || text === "S"))) { save(); return }
-    if (!cursor.plain(modifiers)) return
-    if (text === "w" || text === "W") { setTab("Wireless"); place("tab:Wireless") }
-    else if (text === "r") { MonitorService.refresh(); refreshBrightness() }
-    else if (text === "m" && cursorKey.indexOf("box:") === 0) moving = boxName(stopIndex("box:"))
+  onTabRequested: function (direction) {
+    host.switchPanel(direction)
+  }
+  onTextKey: function (text, modifiers) {
+    if (busy)
+      return
+    if (text === "\u0013" || ((modifiers & Qt.ControlModifier) && (text === "s" || text === "S"))) {
+      save()
+      return
+    }
+    if (!cursor.plain(modifiers))
+      return
+    if (text === "w" || text === "W") {
+      setTab("Wireless")
+      place("tab:Wireless")
+    } else if (text === "r") {
+      MonitorService.refresh()
+      refreshBrightness()
+    } else if (text === "m" && cursorKey.indexOf("box:") === 0)
+      moving = boxName(stopIndex("box:"))
   }
   onCursorKeyChanged: defer(revealCursor)
   onTestingChanged: {
     now = Date.now()
-    if (testing) { moving = ""; defer(function() { view.place("revert") }) }
+    if (testing) {
+      moving = ""
+      defer(function () {
+        view.place("revert")
+      })
+    }
   }
 
   Connections {
@@ -274,7 +501,10 @@ PanelKeyCatcher {
         scroll.contentY = 0
         view.refreshBrightness()
         // Reopened during a trial: land on Revert again.
-        if (view.testing) view.defer(function() { view.place("revert") })
+        if (view.testing)
+          view.defer(function () {
+            view.place("revert")
+          })
       }
     }
   }
@@ -284,18 +514,28 @@ PanelKeyCatcher {
   Component.onCompleted: {
     ensureSelection()
     refreshBrightness()
-    if (testing) defer(function() { view.place("revert") })
+    if (testing)
+      defer(function () {
+        view.place("revert")
+      })
   }
   readonly property bool footerShown: footer.shown
   Connections {
     target: MonitorService
-    function onTransactionChanged() { view.defer(view.ensureSelection) }
+    function onTransactionChanged() {
+      view.defer(view.ensureSelection)
+    }
   }
   function ensureSelection() {
-    if (selected || !transaction.draft.length) return
-    var focused = transaction.draft.find(function(m) { return m.name === MonitorService.focusedMonitor })
-      || transaction.draft.find(function(m) { return m.focused }) || transaction.draft[0]
-    if (focused) selectMonitor(focused.id)
+    if (selected || !transaction.draft.length)
+      return
+    var focused = transaction.draft.find(function (m) {
+      return m.name === MonitorService.focusedMonitor
+    }) || transaction.draft.find(function (m) {
+      return m.focused
+    }) || transaction.draft[0]
+    if (focused)
+      selectMonitor(focused.id)
   }
   onBrightnessTargetChanged: refreshBrightness()
 
@@ -314,21 +554,34 @@ PanelKeyCatcher {
   }
 
   function itemFor(key) {
-    if (key.indexOf("tab:") === 0) return tabRepeater.itemAt(tabs.indexOf(key.slice(4)))
-    if (key.indexOf("box:") === 0) return diagram.boxItem(stopIndex("box:"))
-    if (key.indexOf("offline:") === 0) return offlineRepeater.itemAt(stopIndex("offline:"))
-    if (key.indexOf("peer:") === 0) return peerRepeater.itemAt(stopIndex("peer:"))
-    return ({ identify: identifyButton, power: powerButton, brightness: brightnessRow, scan: scanButton })[key] || dropdownFor(key)
+    if (key.indexOf("tab:") === 0)
+      return tabRepeater.itemAt(tabs.indexOf(key.slice(4)))
+    if (key.indexOf("box:") === 0)
+      return diagram.boxItem(stopIndex("box:"))
+    if (key.indexOf("offline:") === 0)
+      return offlineRepeater.itemAt(stopIndex("offline:"))
+    if (key.indexOf("peer:") === 0)
+      return peerRepeater.itemAt(stopIndex("peer:"))
+    return ({
+        identify: identifyButton,
+        power: powerButton,
+        brightness: brightnessRow,
+        scan: scanButton
+      })[key] || dropdownFor(key)
   }
   function revealCursor() {
     var item = itemFor(cursorKey)
-    if (!item || !item.visible) return
+    if (!item || !item.visible)
+      return
     var ancestor = item
-    while (ancestor && ancestor !== content) ancestor = ancestor.parent
-    if (!ancestor) return
+    while (ancestor && ancestor !== content)
+      ancestor = ancestor.parent
+    if (!ancestor)
+      return
     var point = item.mapToItem(content, 0, 0)
     var margin = FoamyStyle.gap
-    if (point.y < scroll.contentY) scroll.contentY = Math.max(0, point.y - margin)
+    if (point.y < scroll.contentY)
+      scroll.contentY = Math.max(0, point.y - margin)
     else if (point.y + item.height > scroll.contentY + scroll.height)
       scroll.contentY = Math.max(0, Math.min(scroll.contentHeight - scroll.height, point.y + item.height - scroll.height + margin))
   }
@@ -344,8 +597,7 @@ PanelKeyCatcher {
       width: parent.width
       iconName: "monitor"
       title: view.tr("Displays")
-      meta: MonitorService.activelyCasting ? view.tr("Casting to %1", MonitorService.castTargetName)
-        : view.transaction.draft.length ? FoamyI18n.tn("%1 displays on", view.activeCount) : ""
+      meta: MonitorService.activelyCasting ? view.tr("Casting to %1", MonitorService.castTargetName) : view.transaction.draft.length ? FoamyI18n.tn("%1 displays on", view.activeCount) : ""
       showSettings: false     // nothing to set: Omarchy owns the language
     }
 
@@ -354,7 +606,12 @@ PanelKeyCatcher {
       anchors.top: header.bottom
       width: parent.width
       height: FoamyStyle.controlHeight + FoamyStyle.gap * 2
-      Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: FoamyPalette.divider }
+      Rectangle {
+        anchors.bottom: parent.bottom
+        width: parent.width
+        height: 1
+        color: FoamyPalette.divider
+      }
       Row {
         anchors.left: parent.left
         anchors.leftMargin: FoamyStyle.padding - FoamyStyle.gap
@@ -372,7 +629,8 @@ PanelKeyCatcher {
             height: FoamyStyle.controlHeight
             foreground: view.activeTab === modelData ? FoamyPalette.text : FoamyPalette.secondaryText
             hasCursor: view.hasCursor("tab:" + modelData)
-            onHoveredChanged: if (hovered) view.hover("tab:" + modelData)
+            onHoveredChanged: if (hovered)
+              view.hover("tab:" + modelData)
             onClicked: view.setTab(modelData)
             Rectangle {
               anchors.left: parent.left
@@ -402,10 +660,15 @@ PanelKeyCatcher {
       flickableDirection: Flickable.VerticalFlick
       interactive: !MonitorService.arrangementDragActive
       onContentHeightChanged: contentY = Math.max(0, Math.min(contentY, contentHeight - height))
-      QQC.ScrollBar.vertical: QQC.ScrollBar { policy: scroll.contentHeight > scroll.height ? QQC.ScrollBar.AsNeeded : QQC.ScrollBar.AlwaysOff }
+      QQC.ScrollBar.vertical: QQC.ScrollBar {
+        policy: scroll.contentHeight > scroll.height ? QQC.ScrollBar.AsNeeded : QQC.ScrollBar.AlwaysOff
+      }
       // A wheel notch scrolls about three rows, however the mouse splits it;
       // off while a display box is being dragged.
-      FoamyWheelScroll { target: scroll; enabled: scroll.interactive }
+      FoamyWheelScroll {
+        target: scroll
+        enabled: scroll.interactive
+      }
 
       Column {
         id: content
@@ -458,9 +721,11 @@ PanelKeyCatcher {
                 width: parent.width
                 Label {
                   Layout.fillWidth: true
-                  text: view.moving ? view.tr("Arrows move %1. Enter or Esc to finish.", view.friendlyDisplayName(view.transaction.draft.find(function(m) { return m.name === view.moving }) || { name: view.moving }))
-                    : view.cursorKey.indexOf("box:") === 0 ? view.tr("Press M to move it with the arrow keys")
-                    : view.tr("Drag to arrange")
+                  text: view.moving ? view.tr("Arrows move %1. Enter or Esc to finish.", view.friendlyDisplayName(view.transaction.draft.find(function (m) {
+                    return m.name === view.moving
+                  }) || {
+                    name: view.moving
+                  })) : view.cursorKey.indexOf("box:") === 0 ? view.tr("Press M to move it with the arrow keys") : view.tr("Drag to arrange")
                   color: FoamyPalette.secondaryText
                   small: true
                   elide: Text.ElideRight
@@ -472,7 +737,8 @@ PanelKeyCatcher {
                   tooltipText: view.tr("Identify displays")
                   foreground: FoamyPalette.secondaryText
                   hasCursor: view.hasCursor("identify")
-                  onHoveredChanged: if (hovered) view.hover("identify")
+                  onHoveredChanged: if (hovered)
+                    view.hover("identify")
                   onClicked: MonitorService.showIdentify()
                 }
               }
@@ -522,7 +788,9 @@ PanelKeyCatcher {
             currentValue: view.selected ? view.selected.mirrorOf : ""
             options: view.mirrorOptions
             enabled: !!view.selected && view.selected.connected && !view.selected.disabled
-            onChanged: function(value) { view.setMirror(value) }
+            onChanged: function (value) {
+              view.setMirror(value)
+            }
           }
           RowLayout {
             width: parent.width
@@ -536,7 +804,10 @@ PanelKeyCatcher {
               text: view.tr(view.selected && view.selected.disabled ? "Turn on" : "Turn off")
               enabled: !!view.selected && view.selected.connected && (view.selected.disabled || view.activeCount > 1)
               hasCursor: view.hasCursor("power")
-              onHovered: function(hovered) { if (hovered) view.hover("power") }
+              onHovered: function (hovered) {
+                if (hovered)
+                  view.hover("power")
+              }
               onClicked: view.toggleDisplay()
             }
           }
@@ -554,7 +825,9 @@ PanelKeyCatcher {
               dirty: view.marked("resolution")
               options: Model.resolutionOptions(view.selected)
               currentValue: view.selected ? view.selected.width + "x" + view.selected.height : ""
-              onChanged: function(value) { view.setResolution(value) }
+              onChanged: function (value) {
+                view.setResolution(value)
+              }
             }
             Field {
               id: rateField
@@ -564,7 +837,11 @@ PanelKeyCatcher {
               dirty: view.marked("rate")
               options: view.rateOptions
               currentValue: view.selected ? String(view.selected.refreshRate) : ""
-              onChanged: function(value) { view.edit({ refreshRate: Number(value) }) }
+              onChanged: function (value) {
+                view.edit({
+                  refreshRate: Number(value)
+                })
+              }
             }
             Field {
               id: scaleField
@@ -574,7 +851,11 @@ PanelKeyCatcher {
               dirty: view.marked("scale")
               options: view.scaleOptions
               currentValue: view.scaleValue
-              onChanged: function(value) { view.edit({ scale: Number(value) }) }
+              onChanged: function (value) {
+                view.edit({
+                  scale: Number(value)
+                })
+              }
             }
             Field {
               id: orientationField
@@ -582,9 +863,18 @@ PanelKeyCatcher {
               stop: "orientation"
               label: "Orientation"
               dirty: view.marked("rotation")
-              options: view.rotationOptions.map(function(o) { return { value: o.value, label: view.tr(o.label) } })
+              options: view.rotationOptions.map(function (o) {
+                return {
+                  value: o.value,
+                  label: view.tr(o.label)
+                }
+              })
               currentValue: view.selected ? String(view.selected.transform) : "0"
-              onChanged: function(value) { view.edit({ transform: Number(value) }) }
+              onChanged: function (value) {
+                view.edit({
+                  transform: Number(value)
+                })
+              }
             }
           }
           // Bleeds by its inset so the label and slider line up with the fields.
@@ -605,7 +895,12 @@ PanelKeyCatcher {
               spacing: FoamyStyle.gap
               RowLayout {
                 width: parent.width
-                Label { text: view.tr("Brightness"); color: FoamyPalette.secondaryText; small: true; Layout.fillWidth: true }
+                Label {
+                  text: view.tr("Brightness")
+                  color: FoamyPalette.secondaryText
+                  small: true
+                  Layout.fillWidth: true
+                }
                 Label {
                   text: view.brightnessAvailable ? FoamyI18n.t("%1%", view.brightnessPercent) : view.brightnessState ? view.tr("Unavailable") : ""
                   color: FoamyPalette.secondaryText
@@ -622,7 +917,9 @@ PanelKeyCatcher {
                 value: view.brightnessPercent
                 enabled: view.brightnessAvailable
                 opacity: enabled ? 1 : FoamyStyle.disabledOpacity
-                onMoved: function(value) { MonitorService.setBrightness(view.brightnessTarget, value) }
+                onMoved: function (value) {
+                  MonitorService.setBrightness(view.brightnessTarget, value)
+                }
               }
             }
           }
@@ -644,7 +941,9 @@ PanelKeyCatcher {
             options: view.pxOptions(["9", "10", "11", "12", "14", "16", "20"])
             currentValue: String(Style.font.baseSize)
             enabled: !MonitorService.advancedBusy
-            onChanged: function(value) { MonitorService.setTextSize(value) }
+            onChanged: function (value) {
+              MonitorService.setTextSize(value)
+            }
           }
           Field {
             id: cursorSizeField
@@ -654,7 +953,9 @@ PanelKeyCatcher {
             options: view.pxOptions(["24", "30", "36", "48", "72", "96"])
             currentValue: String(MonitorService.cursorSize)
             enabled: !MonitorService.advancedBusy
-            onChanged: function(value) { MonitorService.setCursorSize(value) }
+            onChanged: function (value) {
+              MonitorService.setCursorSize(value)
+            }
           }
           Field {
             id: gtkScaleField
@@ -665,7 +966,11 @@ PanelKeyCatcher {
             options: view.gtkScaleOptions
             currentValue: view.gtkScale.value === null ? view.tr("Unavailable") : String(view.gtkScale.value)
             enabled: view.gtkScale.value !== null && view.gtkScale.error === ""
-            onChanged: function(value) { MonitorService.enqueue("gtk-scale", { value: Number(value) }) }
+            onChanged: function (value) {
+              MonitorService.enqueue("gtk-scale", {
+                value: Number(value)
+              })
+            }
           }
           Label {
             Layout.fillWidth: true
@@ -685,7 +990,10 @@ PanelKeyCatcher {
           enabled: !view.busy
           RowLayout {
             width: parent.width
-            Label { text: view.tr("Wireless displays"); Layout.fillWidth: true }
+            Label {
+              text: view.tr("Wireless displays")
+              Layout.fillWidth: true
+            }
             // The refresh glyph turns for every scan, the silent refresh of a
             // cached list included (the list itself stays put meanwhile).
             FoamyAction {
@@ -695,7 +1003,8 @@ PanelKeyCatcher {
               spinning: view.scanSpinning
               actionEnabled: MonitorService.castRunning ? !MonitorService.castExpectedStop : !MonitorService.scanning
               hasCursor: view.hasCursor("scan")
-              onHoveredChanged: if (hovered) view.hover("scan")
+              onHoveredChanged: if (hovered)
+                view.hover("scan")
               onClicked: view.scanOrStop()
             }
           }
@@ -706,10 +1015,7 @@ PanelKeyCatcher {
             topPadding: FoamyStyle.padding
             bottomPadding: FoamyStyle.padding
             visible: text !== ""
-            text: MonitorService.castRunning ? view.wirelessPhaseLabel()
-              : MonitorService.wirelessError ? view.tr(MonitorService.wirelessError)
-              : MonitorService.scanning || MonitorService.wirelessScanState === "idle" || MonitorService.wirelessPeers.length ? ""
-              : view.tr("No receivers found")
+            text: MonitorService.castRunning ? view.wirelessPhaseLabel() : MonitorService.wirelessError ? view.tr(MonitorService.wirelessError) : MonitorService.scanning || MonitorService.wirelessScanState === "idle" || MonitorService.wirelessPeers.length ? "" : view.tr("No receivers found")
             color: MonitorService.wirelessError && !MonitorService.castRunning ? Commons.Color.urgent : FoamyPalette.mutedText
             small: true
           }
@@ -736,8 +1042,18 @@ PanelKeyCatcher {
                 SequentialAnimation on opacity {
                   running: FoamyMotion.loopAllowed(scanIndicator.visible && view.host.opened === true)
                   loops: Animation.Infinite
-                  NumberAnimation { from: 1; to: 0.3; duration: FoamyMotion.pulse / 2; easing.type: Easing.InOutSine }
-                  NumberAnimation { from: 0.3; to: 1; duration: FoamyMotion.pulse / 2; easing.type: Easing.InOutSine }
+                  NumberAnimation {
+                    from: 1
+                    to: 0.3
+                    duration: FoamyMotion.pulse / 2
+                    easing.type: Easing.InOutSine
+                  }
+                  NumberAnimation {
+                    from: 0.3
+                    to: 1
+                    duration: FoamyMotion.pulse / 2
+                    easing.type: Easing.InOutSine
+                  }
                   onStopped: scanIndicatorIcon.opacity = 1
                 }
               }
@@ -776,7 +1092,11 @@ PanelKeyCatcher {
                   Layout.preferredWidth: FoamyStyle.iconSize
                   Layout.preferredHeight: FoamyStyle.iconSize
                 }
-                Label { Layout.fillWidth: true; elide: Text.ElideRight; text: view.peerLabel(peerRow.modelData) }
+                Label {
+                  Layout.fillWidth: true
+                  elide: Text.ElideRight
+                  text: view.peerLabel(peerRow.modelData)
+                }
               }
             }
           }
@@ -799,7 +1119,11 @@ PanelKeyCatcher {
         bottomRightRadius: bottomLeftRadius
         color: view.busy ? FoamyPalette.fieldFill : "transparent"
       }
-      Rectangle { width: parent.width; height: 1; color: FoamyPalette.divider }
+      Rectangle {
+        width: parent.width
+        height: 1
+        color: FoamyPalette.divider
+      }
       Column {
         id: footerContent
         anchors.left: parent.left
@@ -819,9 +1143,7 @@ PanelKeyCatcher {
           Label {
             objectName: "monitorSaveStatus"
             Layout.fillWidth: true
-            text: view.testing ? FoamyI18n.tn("Reverting in %1 seconds", view.secondsLeft)
-              : view.changeCount ? FoamyI18n.tn("%1 unsaved changes", view.changeCount)
-              : MonitorService.displayChangesSaved && !view.actionError ? view.tr("All changes saved") : ""
+            text: view.testing ? FoamyI18n.tn("Reverting in %1 seconds", view.secondsLeft) : view.changeCount ? FoamyI18n.tn("%1 unsaved changes", view.changeCount) : MonitorService.displayChangesSaved && !view.actionError ? view.tr("All changes saved") : ""
             color: view.changeCount || view.testing ? view.changedColor : FoamyPalette.secondaryText
             small: true
             wrapMode: Text.WordWrap
@@ -830,14 +1152,20 @@ PanelKeyCatcher {
             visible: !view.busy && view.changeCount > 0
             text: view.tr("Discard")
             hasCursor: view.hasCursor("discard")
-            onHovered: function(hovered) { if (hovered) view.hover("discard") }
+            onHovered: function (hovered) {
+              if (hovered)
+                view.hover("discard")
+            }
             onClicked: MonitorService.enqueue("discard")
           }
           Button {
             visible: view.testing
             text: view.tr("Revert")
             hasCursor: view.hasCursor("revert")
-            onHovered: function(hovered) { if (hovered) view.hover("revert") }
+            onHovered: function (hovered) {
+              if (hovered)
+                view.hover("revert")
+            }
             onClicked: view.decide("revert")
           }
           PrimaryButton {
@@ -845,7 +1173,10 @@ PanelKeyCatcher {
             text: view.tr(view.testing ? "Keep settings" : "Save")
             enabled: view.testing || view.changeCount > 0 && !view.busy && !MonitorService.disconnectedDraft
             hasCursor: view.hasCursor(view.testing ? "keep" : "save")
-            onHovered: function(hovered) { if (hovered) view.hover(view.testing ? "keep" : "save") }
+            onHovered: function (hovered) {
+              if (hovered)
+                view.hover(view.testing ? "keep" : "save")
+            }
             onClicked: view.testing ? view.decide("keep") : view.save()
           }
         }
@@ -894,7 +1225,9 @@ PanelKeyCatcher {
     property alias options: dropdown.options
     readonly property bool popupOpen: dropdown.popupOpen
     signal changed(string value)
-    function open() { dropdown.open() }
+    function open() {
+      dropdown.open()
+    }
     implicitWidth: dropdown.implicitWidth
     implicitHeight: fieldLabel.implicitHeight + FoamyStyle.gapSmall + dropdown.rowHeight
     opacity: enabled ? 1 : FoamyStyle.disabledOpacity
@@ -922,54 +1255,89 @@ PanelKeyCatcher {
       showLabel: false
       value: field.currentValue
       hasCursor: view.hasCursor(field.stop)
-      onHovered: function(isHovered) { if (isHovered) view.hover(field.stop) }
-      onChanged: function(value) { field.changed(value) }
+      onHovered: function (isHovered) {
+        if (isHovered)
+          view.hover(field.stop)
+      }
+      onChanged: function (value) {
+        field.changed(value)
+      }
     }
   }
   component ArrangementDiagram: Item {
-    id: diagram
+    id: arrangement
     height: Style.space(150)
     // Display geometry is spatial: never mirror it.
     LayoutMirroring.enabled: false
     LayoutMirroring.childrenInherit: true
 
-    readonly property var boxes: view.enabledMonitorInfos.map(function(info, i) {
+    readonly property var boxes: view.enabledMonitorInfos.map(function (info, i) {
       var f = Model.footprint(info)
-      return { name: info.name, number: i + 1, label: view.friendlyDisplayName(info), x: info.x, y: info.y, w: f.w, h: f.h,
-        focused: info.id === view.selectedMonitor }
+      return {
+        name: info.name,
+        number: i + 1,
+        label: view.friendlyDisplayName(info),
+        x: info.x,
+        y: info.y,
+        w: f.w,
+        h: f.h,
+        focused: info.id === view.selectedMonitor
+      }
     })
-    function boxItem(i) { return boxRepeater.itemAt(i) }
-    readonly property real minX: boxes.reduce(function(m, b) { return Math.min(m, b.x) }, boxes.length ? boxes[0].x : 0)
-    readonly property real minY: boxes.reduce(function(m, b) { return Math.min(m, b.y) }, boxes.length ? boxes[0].y : 0)
-    readonly property real maxX: boxes.reduce(function(m, b) { return Math.max(m, b.x + b.w) }, boxes.length ? boxes[0].x + boxes[0].w : 1)
-    readonly property real maxY: boxes.reduce(function(m, b) { return Math.max(m, b.y + b.h) }, boxes.length ? boxes[0].y + boxes[0].h : 1)
+    function boxItem(i) {
+      return boxRepeater.itemAt(i)
+    }
+    readonly property real minX: boxes.reduce(function (m, b) {
+      return Math.min(m, b.x)
+    }, boxes.length ? boxes[0].x : 0)
+    readonly property real minY: boxes.reduce(function (m, b) {
+      return Math.min(m, b.y)
+    }, boxes.length ? boxes[0].y : 0)
+    readonly property real maxX: boxes.reduce(function (m, b) {
+      return Math.max(m, b.x + b.w)
+    }, boxes.length ? boxes[0].x + boxes[0].w : 1)
+    readonly property real maxY: boxes.reduce(function (m, b) {
+      return Math.max(m, b.y + b.h)
+    }, boxes.length ? boxes[0].y + boxes[0].h : 1)
     readonly property real spanX: Math.max(1, maxX - minX)
     readonly property real spanY: Math.max(1, maxY - minY)
     // A little headroom so a box at the bounding box's edge is not flush with the frame.
-    readonly property real pxPerUnit: Math.min(diagram.width / diagram.spanX, diagram.height / diagram.spanY) * 0.97
+    readonly property real pxPerUnit: Math.min(arrangement.width / arrangement.spanX, arrangement.height / arrangement.spanY) * 0.97
     readonly property real contentWidth: spanX * pxPerUnit
     readonly property real contentHeight: spanY * pxPerUnit
 
     // Logical (Hyprland-coordinate) rects of every box except the one being dragged.
     function otherLogicalRects(excludeName) {
-      return boxes.filter(function(b) { return b.name !== excludeName }).map(function(b) { return { x: b.x, y: b.y, w: b.w, h: b.h } })
+      return boxes.filter(function (b) {
+        return b.name !== excludeName
+      }).map(function (b) {
+        return {
+          x: b.x,
+          y: b.y,
+          w: b.w,
+          h: b.h
+        }
+      })
     }
     function commitDrag(name, logicalX, logicalY) {
-      var info = view.transaction.draft.find(function(m) { return m.name === name })
-      if (info && (logicalX !== info.x || logicalY !== info.y)) view.moveMonitor(name, logicalX, logicalY)
+      var info = view.transaction.draft.find(function (m) {
+        return m.name === name
+      })
+      if (info && (logicalX !== info.x || logicalY !== info.y))
+        view.moveMonitor(name, logicalX, logicalY)
     }
 
     Item {
-      width: diagram.contentWidth
-      height: diagram.contentHeight
+      width: arrangement.contentWidth
+      height: arrangement.contentHeight
       anchors.centerIn: parent
       Repeater {
         id: boxRepeater
-        model: diagram.boxes
+        model: arrangement.boxes
         ArrangementBox {
           required property var modelData
           required property int index
-          canvas: diagram
+          canvas: arrangement
           info: modelData
           boxIndex: index
         }
@@ -997,8 +1365,7 @@ PanelKeyCatcher {
     width: Math.max(2, info.w * canvas.pxPerUnit - 2)
     height: Math.max(2, info.h * canvas.pxPerUnit - 2)
     radius: FoamyStyle.radiusSmall
-    color: info.focused ? Qt.tint(FoamyPalette.background, Qt.alpha(FoamyPalette.text, 0.18))
-      : cursorHere ? Qt.tint(FoamyPalette.background, FoamyPalette.hoverFill) : FoamyPalette.background
+    color: info.focused ? Qt.tint(FoamyPalette.background, Qt.alpha(FoamyPalette.text, 0.18)) : cursorHere ? Qt.tint(FoamyPalette.background, FoamyPalette.hoverFill) : FoamyPalette.background
     border.width: dragArea.dragging || movingHere ? 2 : 1
     border.color: dragArea.dragging || movingHere || cursorHere || info.focused ? FoamyPalette.text : FoamyPalette.divider
     z: dragArea.dragging || movingHere ? 10 : 1
@@ -1006,8 +1373,11 @@ PanelKeyCatcher {
     Accessible.name: info.label
     Accessible.onPressAction: selectDisplay()
     function selectDisplay() {
-      var monitor = view.transaction.draft.find(function(m) { return m.name === box.info.name })
-      if (monitor) view.selectMonitor(monitor.id)
+      var monitor = view.transaction.draft.find(function (m) {
+        return m.name === box.info.name
+      })
+      if (monitor)
+        view.selectMonitor(monitor.id)
     }
 
     Text {
@@ -1027,7 +1397,8 @@ PanelKeyCatcher {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.SizeAllCursor
-      onContainsMouseChanged: if (containsMouse) view.hover("box:" + box.boxIndex)
+      onContainsMouseChanged: if (containsMouse)
+        view.hover("box:" + box.boxIndex)
 
       property bool dragging: false
       property real startCanvasX: 0
@@ -1041,7 +1412,7 @@ PanelKeyCatcher {
       property real curLogicalY: 0
 
       // Mapped into the canvas, which never moves while dragging.
-      onPressed: function(mouse) {
+      onPressed: function (mouse) {
         var p = mapToItem(box.parent, mouse.x, mouse.y)
         startCanvasX = p.x
         startCanvasY = p.y
@@ -1053,8 +1424,9 @@ PanelKeyCatcher {
         view.moving = ""
         view.dragging = true
       }
-      onPositionChanged: function(mouse) {
-        if (!dragging) return
+      onPositionChanged: function (mouse) {
+        if (!dragging)
+          return
         var unit = box.canvas.pxPerUnit
         var p = mapToItem(box.parent, mouse.x, mouse.y)
         var rawX = startLogicalX + (p.x - startCanvasX) / unit
@@ -1067,13 +1439,17 @@ PanelKeyCatcher {
           var o = others[i]
           var candidatesX = [o.x + o.w / 2 - rawX - w / 2, o.x - rawX, (o.x + o.w) - (rawX + w), o.x - (rawX + w), (o.x + o.w) - rawX]
           for (var cx = 0; cx < candidatesX.length; cx++)
-            if (Math.abs(candidatesX[cx]) <= snap && (bestDX === null || Math.abs(candidatesX[cx]) < Math.abs(bestDX))) bestDX = candidatesX[cx]
+            if (Math.abs(candidatesX[cx]) <= snap && (bestDX === null || Math.abs(candidatesX[cx]) < Math.abs(bestDX)))
+              bestDX = candidatesX[cx]
           var candidatesY = [o.y + o.h / 2 - rawY - h / 2, o.y - rawY, (o.y + o.h) - (rawY + h), o.y - (rawY + h), (o.y + o.h) - rawY]
           for (var cy = 0; cy < candidatesY.length; cy++)
-            if (Math.abs(candidatesY[cy]) <= snap && (bestDY === null || Math.abs(candidatesY[cy]) < Math.abs(bestDY))) bestDY = candidatesY[cy]
+            if (Math.abs(candidatesY[cy]) <= snap && (bestDY === null || Math.abs(candidatesY[cy]) < Math.abs(bestDY)))
+              bestDY = candidatesY[cy]
         }
-        if (bestDX !== null) rawX += bestDX
-        if (bestDY !== null) rawY += bestDY
+        if (bestDX !== null)
+          rawX += bestDX
+        if (bestDY !== null)
+          rawY += bestDY
         // Whole logical pixels; overlap is only resolved on drop, so a display
         // can be swung across another one mid-gesture.
         curLogicalX = Math.round(rawX)
@@ -1091,15 +1467,22 @@ PanelKeyCatcher {
         var monitorName = box.info.name
         dragging = false
         view.dragging = false
-        var resolved = Model.resolveMonitorOverlap({ x: curLogicalX, y: curLogicalY, w: box.info.w, h: box.info.h },
-          box.canvas.otherLogicalRects(box.info.name))
+        var resolved = Model.resolveMonitorOverlap({
+          x: curLogicalX,
+          y: curLogicalY,
+          w: box.info.w,
+          h: box.info.h
+        }, box.canvas.otherLogicalRects(box.info.name))
         box.canvas.commitDrag(box.info.name, resolved.x, resolved.y)
         box.dragDeltaX = 0
         box.dragDeltaY = 0
         // Selecting rebuilds the diagram's delegates, so wait until release ends.
-        view.defer(function() {
-          var monitor = view.transaction.draft.find(function(m) { return m.name === monitorName })
-          if (monitor) view.selectMonitor(monitor.id)
+        view.defer(function () {
+          var monitor = view.transaction.draft.find(function (m) {
+            return m.name === monitorName
+          })
+          if (monitor)
+            view.selectMonitor(monitor.id)
         })
       }
     }

@@ -12,9 +12,9 @@ How the lists are made:
 
 ## `foamy-monitor-helper`
 
-- `bin/aarch64/foamy-monitor-helper`: sha256 `88a2be11099ee215b3480a19b9dad37ce2cc69ab3d09d545587cfcf8217d4dcd`
-- `bin/x86_64/foamy-monitor-helper`: sha256 `a19d28544bf4785478554da621dc16bfa8ba0e551d712644a7a50c62f522df76`
-- `native/native.pin`: source `914a8657bfaf6b2de46b5aeb01ee6fdeb7779cffddf7af6e2377035d52c218c8`, toolchain 1.99.1
+- `bin/aarch64/foamy-monitor-helper`: sha256 `4b75517eab46407425872fc89570085a61030779c4fb3ead83ea554548a68d62`
+- `bin/x86_64/foamy-monitor-helper`: sha256 `ca08d43540550a87d1b53cf7a39f730200bb46ae07a994fee73928084f9442aa`
+- `native/native.pin`: source `34202d55a33418300b54630221d1948d8ad63e5ddbbfbdc7e6c765ee23da824f`, toolchain 1.99.1
 
 ### Crates linked into `foamy-monitor-helper`
 
@@ -43,7 +43,7 @@ First-party crates (not third-party code, listed for completeness):
 
 | Crate | Version | Source | License | Arches | Notices |
 |---|---|---|---|---|---|
-| foamy-helper | 0.1.1 | `kit/rust/foamy-helper/` (foamy-kit, vendored) | MIT | both | [N10](#n10) |
+| foamy-helper | 0.1.2 | `kit/rust/foamy-helper/` (foamy-kit, vendored) | MIT | both | [N10](#n10) |
 | foamy-monitor-helper | 0.1.0 | `native/` (this plugin) | MIT | both | `LICENSE` |
 
 ### Toolchain code linked into `foamy-monitor-helper`
@@ -688,7 +688,7 @@ DEALINGS IN THE SOFTWARE.
 
 ### N10
 
-Shipped by: foamy-helper 0.1.1 (foamy-kit's LICENSE).
+Shipped by: foamy-helper 0.1.2 (foamy-kit's LICENSE).
 
 ```text
 MIT License

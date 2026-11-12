@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import qs.Commons
-import qs.Commons as Commons
 import qs.Ui
 import "kit"
 
@@ -24,7 +23,11 @@ Panel {
   // nf-md-monitor_multiple / nf-md-monitor, escaped so tools cannot drop them.
   readonly property string barGlyph: (MonitorService.activelyCasting || Quickshell.screens.length > 1) ? "\u{f037a}" : "\u{f0379}"
 
-  FoamyMember { id: member; scope: "monitor"; demanding: root.opened }
+  FoamyMember {
+    id: member
+    scope: "monitor"
+    demanding: root.opened
+  }
 
   onOpenedChanged: {
     if (opened) {
@@ -41,46 +44,72 @@ Panel {
   // change can rebuild a bar, and closing the popup must not hide the
   // countdown: only the focused screen's bar reopens.
   function reopenForTrial() {
-    if (!MonitorService.testing || root.opened) return
-    if (member.members <= 1 || root.screenName === MonitorService.focusedMonitor) root.open()
+    if (!MonitorService.testing || root.opened)
+      return
+    if (member.members <= 1 || root.screenName === MonitorService.focusedMonitor)
+      root.open()
+    else
     // No bar on the focused output (or it is unknown): the leader shows it.
-    else if (member.isLeader && !root.barOnFocused()) root.open()
+    if (member.isLeader && !root.barOnFocused())
+      root.open()
   }
   function barOnFocused() {
     var screens = Quickshell.screens
     for (var i = 0; i < screens.length; i++)
-      if (String(screens[i].name) === MonitorService.focusedMonitor) return true
+      if (String(screens[i].name) === MonitorService.focusedMonitor)
+        return true
     return false
   }
   Connections {
     target: MonitorService
-    function onTestingChanged() { root.reopenForTrial() }
+    function onTestingChanged() {
+      root.reopenForTrial()
+    }
     function onBrightnessStepped(requester, monitor, percent) {
-      if (requester === root && percent > 0) root.showBrightnessOsd(percent)
+      if (requester === root && percent > 0)
+        root.showBrightnessOsd(percent)
     }
   }
   Component.onCompleted: reopenTimer.restart()
   // Owned by this bar (Qt.callLater would outlive it on unplug).
-  Timer { id: reopenTimer; interval: 0; onTriggered: root.reopenForTrial() }
+  Timer {
+    id: reopenTimer
+    interval: 0
+    onTriggered: root.reopenForTrial()
+  }
 
   // ---- Brightness from the bar ---------------------------------------------
   // The wheel adjusts the display this bar is on; IPC adjusts the focused one.
-  function wheelTarget() { return root.screenName || MonitorService.focusedMonitor }
+  function wheelTarget() {
+    return root.screenName || MonitorService.focusedMonitor
+  }
   function showBrightnessOsd(percent) {
-    if (!bar || !bar.shell || typeof bar.shell.summon !== "function") return
-    // omarchy.osd is the summon target a clone of omarchy.monitor may use (4.0 and 4.5).
-    bar.shell.summon("omarchy.osd", JSON.stringify({ icon: "brightness", value: percent }))
+    if (!bar || !bar.shell || typeof bar.shell.summon !== "function")
+      return
+    // omarchy.osd is the summon target a clone of omarchy.monitor may use.
+    bar.shell.summon("omarchy.osd", JSON.stringify({
+      icon: "brightness",
+      value: percent
+    }))
   }
   function brightnessIpc(value) {
     var target = MonitorService.focusedMonitor
     var text = String(value).trim()
     var relative = /^[+-]/.test(text)
     var number = Number(text.replace(/%$/, ""))
-    if (!target) return "error: no focused display"
-    if (text === "" || !isFinite(number)) return "error: expected a percentage such as 40, +5 or -5"
-    var result = MonitorService.changeBrightness(target, relative ? { delta: number } : { value: number }, root)
-    if (result < 0) return "error: brightness is unavailable on " + target
-    if (result === 0) return "reading " + target
+    if (!target)
+      return "error: no focused display"
+    if (text === "" || !isFinite(number))
+      return "error: expected a percentage such as 40, +5 or -5"
+    var result = MonitorService.changeBrightness(target, relative ? {
+      delta: number
+    } : {
+      value: number
+    }, root)
+    if (result < 0)
+      return "error: brightness is unavailable on " + target
+    if (result === 0)
+      return "reading " + target
     return target + " " + result + "%"
   }
 
@@ -88,7 +117,9 @@ Panel {
     var view = popup.bodyItem
     var brightness = MonitorService.brightnessFor(MonitorService.focusedMonitor)
     return {
-      open: root.opened, leader: member.isLeader, members: member.members,
+      open: root.opened,
+      leader: member.isLeader,
+      members: member.members,
       brightness: brightness && brightness.available ? brightness.percent : null,
       brightnessAvailable: brightness ? brightness.available : null,
       focusedMonitor: MonitorService.focusedMonitor,
@@ -100,32 +131,57 @@ Panel {
       language: root.language,
       statusRuns: MonitorService.statusRuns,
       wirelessDisplay: {
-        phase: MonitorService.castPhase, target: MonitorService.castTargetName, monitor: MonitorService.castMonitor,
-        scanState: MonitorService.wirelessScanState, peers: MonitorService.wirelessPeers,
-        error: MonitorService.wirelessError, missingPackages: MonitorService.missingPackages
+        phase: MonitorService.castPhase,
+        target: MonitorService.castTargetName,
+        monitor: MonitorService.castMonitor,
+        scanState: MonitorService.wirelessScanState,
+        peers: MonitorService.wirelessPeers,
+        error: MonitorService.wirelessError,
+        missingPackages: MonitorService.missingPackages
       }
     }
   }
   function scanWireless() {
     open()
     var view = popup.ensureBody()
-    if (view) view.setTab("Wireless")
+    if (view)
+      view.setTab("Wireless")
     MonitorService.checkWireless()
   }
 
   FoamyIpc {
     target: "foamy.monitor"
     enabled: member.isLeader
-    function brightness(percent: string): string { return root.brightnessIpc(percent) }
-    function state(): string { return JSON.stringify(root.statusObject()) }
-    function status(): string { return JSON.stringify(root.statusObject()) }
-    function scanWireless(): void { root.scanWireless() }
-    function stopWireless(): void { MonitorService.stopCast() }
-    function open(): void { root.open() }
-    function close(): void { root.close() }
-    function toggle(): void { root.toggle() }
-    function show(): void { root.open() }
-    function hide(): void { root.close() }
+    function brightness(percent: string): string {
+      return root.brightnessIpc(percent)
+    }
+    function state(): string {
+      return JSON.stringify(root.statusObject())
+    }
+    function status(): string {
+      return JSON.stringify(root.statusObject())
+    }
+    function scanWireless(): void {
+      root.scanWireless()
+    }
+    function stopWireless(): void {
+      MonitorService.stopCast()
+    }
+    function open(): void {
+      root.open()
+    }
+    function close(): void {
+      root.close()
+    }
+    function toggle(): void {
+      root.toggle()
+    }
+    function show(): void {
+      root.open()
+    }
+    function hide(): void {
+      root.close()
+    }
   }
 
   // The identify cards: one set per shell, created only while shown.
@@ -144,12 +200,16 @@ Panel {
     text: root.barGlyph
     tooltipText: FoamyI18n.t("Displays")
     onPressed: root.toggle()
-    onWheelMoved: function(delta) {
+    onWheelMoved: function (delta) {
       var wheel = Util.wheelSteps(root.wheelAccumulator, delta)
       root.wheelAccumulator = wheel.remainder
-      if (!wheel.steps) return
-      var percent = MonitorService.changeBrightness(root.wheelTarget(), { delta: wheel.steps * 5 }, root)
-      if (percent > 0) root.showBrightnessOsd(percent)
+      if (!wheel.steps)
+        return
+      var percent = MonitorService.changeBrightness(root.wheelTarget(), {
+        delta: wheel.steps * 5
+      }, root)
+      if (percent > 0)
+        root.showBrightnessOsd(percent)
     }
   }
 
@@ -162,7 +222,9 @@ Panel {
     open: root.opened
     wide: true
     body: Component {
-      MonitorView { host: root }
+      MonitorView {
+        host: root
+      }
     }
   }
 }

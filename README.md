@@ -83,7 +83,9 @@ display has no brightness control).
 - FluxCast stops when the plugin is disabled or removed, when the shell
   reloads, and when its helper is killed (it runs with a parent-death signal).
 - A display trial runs in its own detached process, so it still reverts on
-  its timeout when the shell reloads or quits mid-trial.
+  its timeout when the shell reloads or quits mid-trial. If that process is
+  killed (or crashes) before it reverts, the panel's next refresh restores
+  the previous settings and says so.
 
 ### monitors.lua
 
@@ -194,12 +196,22 @@ Set `CARGO_TARGET_DIR` outside the plugin (e.g. `~/.cache/foamy-native/foamy-mon
 before running cargo yourself; the shell hot-reloads plugin folders.
 
 ```sh
+mise install                        # once: the linters and node that mise.toml pins
+tests/validate.sh                   # every lint, format and test check (--ci, --fast)
+tests/suite.sh                      # the tests alone (--ci: no Quickshell or Omarchy)
+```
+
+`tests/suite.sh` runs:
+
+```sh
 node tests/model.test.js && node tests/i18n.test.cjs
 python3 -I tests/test_display_transaction.py && python3 -I tests/test_fluxcast_bridge.py
-python3 tests/runtime.py            # offscreen on the installed 4.5 shell, 4.0 only with FOAMY_HOST_40 (needs foamy-kit)
+python3 tests/runtime.py            # offscreen on the installed 4.5 shell (needs foamy-kit)
 python3 tests/runtime-idle.py       # processes and CPU while every popup is closed
-bash tests/kit-check.sh
 ```
+
+and the helper suites again with the other architecture's binary when
+qemu-user can run it.
 
 The helper tests run this machine's `bin/<arch>/foamy-monitor-helper`;
 `FOAMY_HELPER='["/abs/path/bin/aarch64/foamy-monitor-helper"]'` picks another

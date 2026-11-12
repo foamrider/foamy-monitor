@@ -42,9 +42,6 @@ function friendlyMonitorLabel(display) {
   return name || "Unknown display"
 }
 
-// Full per-monitor info (position, mode, transform, ...) from
-// `hyprctl monitors all -j`, plus the friendly label derived above.
-// Returns { list, byName, labels } — list preserves hyprctl's own order.
 // "3440x1440@165.00Hz" style tokens -> the distinct refresh rates (as
 // numbers) available at exactly this width/height, highest first.
 function refreshRatesFor(availableModes, width, height) {
@@ -85,8 +82,6 @@ function nearestRate(rates, current) {
   return best
 }
 
-// Enabled displays, left-to-right by current x position — the "order" the
-// Arrangement section shows and reorders.
 // Strict AABB overlap test: rects that only touch at an edge (a's right ==
 // b's left) do not count as overlapping, so flush/snapped placement is
 // never rejected as a collision.
@@ -132,9 +127,6 @@ function resolveMonitorOverlap(target, others) {
   return { x: Math.round(x), y: Math.round(y) }
 }
 
-// Idle-timeout stops, seconds. Mirrors the curated feel of the text-size
-// slider's px stops: a handful of sane, round choices rather than a raw
-// continuous range.
 function parseFluxCastScan(raw) {
   var payload = null
   try {

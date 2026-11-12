@@ -1,0 +1,2 @@
+tests/qml/*  qmllint  # harness scene: its qs.Ui and "harness" imports exist only in the harness's staged copy
+preview/Before.qml  qmllint  # preview scene: FakeDisplay comes from the harness's staged qs.Ui, so qmllint reads that import as unused
