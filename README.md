@@ -207,7 +207,7 @@ tests/suite.sh                      # the tests alone (--ci: no Quickshell or Om
 node tests/model.test.js && node tests/i18n.test.cjs
 python3 -I tests/test_display_transaction.py && python3 -I tests/test_fluxcast_bridge.py
 python3 tests/runtime.py            # offscreen on the installed 4.5 shell (needs foamy-kit)
-python3 tests/runtime-idle.py       # processes and CPU while every popup is closed
+python3 tests/runtime-idle.py       # commands and helper runs, CPU while every popup is closed
 ```
 
 and the helper suites again with the other architecture's binary when
@@ -218,7 +218,8 @@ The helper tests run this machine's `bin/<arch>/foamy-monitor-helper`;
 (aarch64 runs through qemu-user binfmt). They put only fake `hyprctl`,
 `systemctl`, `dbus-update-activation-environment`, `fluxcast` and `ffmpeg`
 on PATH, with temp HOME/XDG dirs; the runtime tests put fake `hyprctl`,
-brightness and FluxCast commands first on PATH. Nothing reaches the live
+brightness, FluxCast and `ffmpeg` commands, and a `bash` that logs each
+helper run, first on PATH. Nothing reaches the live
 session, the displays or a wireless receiver. The runtime tests use the foamy-kit
 harness (`FOAMY_KIT`, default `~/GitHub/Personal/foamy-kit`).
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Shared fakes for the offscreen runtime tests: hyprctl, brightness, gsettings,
-the text-size script and FluxCast.
+the text-size script, FluxCast, ffmpeg and a logging bash.
 
 Each fake is a small script written into a temporary bin directory. They log
 every call to $FOAMY_CALLS and never touch the
@@ -60,6 +60,9 @@ if args[:1] == ["monitors"]:
     snapshot = open(os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "monitors.json")).read()
     delay = os.environ["FOAMY_CALLS"] + ".hyprdelay"
     if os.path.exists(delay):
+        # The line tells a waiting test that the snapshot is taken.
+        with open(os.environ["FOAMY_CALLS"], "a") as log:
+            log.write("hyprctl-read\\n")
         time.sleep(float(open(delay).read() or 0))
     print(snapshot)
 elif args[:1] == ["configerrors"]:
@@ -108,7 +111,9 @@ if os.path.exists(os.environ["FOAMY_CALLS"] + ".textfail"):
         # With $FOAMY_CALLS.peers present a scan instead finishes after
         # $FOAMY_CALLS.scandelay seconds (default 0.8) and prints those peers
         # (FluxCast's "[n] MAC name via source" lines). With
-        # $FOAMY_CALLS.stubborn present it ignores SIGINT.
+        # $FOAMY_CALLS.stubborn present it ignores SIGINT. A "fluxcast-ready"
+        # line in $FOAMY_CALLS says its signal handlers are in place. With
+        # $FOAMY_CALLS.casting present a cast reaches its receiver.
         "fluxcast": LOGGER
         + """
 import signal
@@ -124,18 +129,29 @@ if os.path.exists(os.environ["FOAMY_CALLS"] + ".stubborn"):
         with open(os.environ["FOAMY_CALLS"], "a") as log:
             log.write("fluxcast-ignored\\t%d\\n" % number)
     signal.signal(signal.SIGINT, ignore)
+with open(os.environ["FOAMY_CALLS"], "a") as log:
+    log.write("fluxcast-ready\\n")
 peers = os.environ["FOAMY_CALLS"] + ".peers"
 if "--wfd-scan" in sys.argv and os.path.exists(peers):
     delay = os.environ["FOAMY_CALLS"] + ".scandelay"
     time.sleep(float(open(delay).read()) if os.path.exists(delay) else 0.8)
     print(open(peers).read(), flush=True)
     sys.exit(0)
+if "--wfd-peer" in sys.argv and os.path.exists(os.environ["FOAMY_CALLS"] + ".casting"):
+    # The receiver accepted the stream: the bridge reports "casting".
+    print("[FluxCast WFD RTSP] PLAY accepted; media stream started.", flush=True)
 time.sleep(30)
 """,
-        "python3": """#!/bin/sh
-printf 'python3\\t%s\\n' "$*" >> "$FOAMY_CALLS"
-exec /usr/bin/python3 "$@"
+        # Every helper run starts as `bash -c 'exec … foamy-monitor-helper'`
+        # (kit/FoamyNative.js), so this logs the runs that call no other fake
+        # (the helper's dependency check), tab-separated like the others.
+        "bash": """#!/bin/sh
+(IFS='\t'; printf 'bash\\t%s\\n' "$*") >> "${FOAMY_CALLS:-/dev/null}"
+exec /usr/bin/bash "$@"
 """,
+        # The helper checks for ffmpeg before a cast; this keeps the machine's
+        # own ffmpeg (or its absence) out of the runtime tests.
+        "ffmpeg": "#!/bin/sh\nexit 0\n",
     }
     for name, body in scripts.items():
         path = directory / name

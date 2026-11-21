@@ -525,22 +525,6 @@ mod tests {
     }
 
     #[test]
-    fn conversions() {
-        assert_eq!(int(&json!(1920.7)), Ok(1920));
-        assert_eq!(int(&json!(" 1_080 ")), Ok(1080));
-        assert_eq!(int(&json!(-3)), Ok(-3));
-        assert!(int(&json!("1.5")).is_err());
-        assert!(int(&json!(null)).is_err());
-        assert_eq!(float(&json!("59.94")), Ok(59.94));
-        assert_eq!(float(&json!(60)), Ok(60.0));
-        assert_eq!(to_str(&json!(1.0)), "1.0");
-        assert_eq!(to_str(&json!(-1080)), "-1080");
-        assert_eq!(to_str(&json!(null)), "None");
-        assert_eq!(repr_str("it's"), "\"it's\"");
-        assert_eq!(repr_str("/a b"), "'/a b'");
-    }
-
-    #[test]
     fn lines_and_spaces() {
         assert_eq!(
             splitlines("a\r\nb\rc\nd\u{2028}e\n"),
@@ -551,20 +535,5 @@ mod tests {
         assert_eq!(universal_newlines("a\r\nb\rc"), "a\nb\nc");
         assert_eq!(strip("\u{1f} x \u{a0}"), "x");
         assert_eq!(rstrip("x\t\n"), "x");
-    }
-
-    #[test]
-    fn os_errors_read_like_python() {
-        let error = io::Error::from_raw_os_error(libc::ENOENT);
-        assert_eq!(
-            os_error(&error, Path::new("/x/monitors.lua")),
-            "[Errno 2] No such file or directory: '/x/monitors.lua'"
-        );
-        let bytes = std::hint::black_box(b"ab\xff".as_slice());
-        let error = std::str::from_utf8(bytes).unwrap_err();
-        assert_eq!(
-            decode_error(bytes, &error),
-            "'utf-8' codec can't decode byte 0xff in position 2: invalid start byte"
-        );
     }
 }

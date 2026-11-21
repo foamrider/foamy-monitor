@@ -22,6 +22,47 @@ import unittest
 
 PLUGIN = Path(__file__).resolve().parents[1]
 
+# MonitorView's tr() shows a helper message in the user's language when the
+# message is a key of the English catalog, or when it fills one of these
+# templates (the list in MonitorView.qml `function tr`). A message renamed on
+# one side only would show in English under every other language. The same
+# lines are in tests/test_display_transaction.py: each suite runs on its own.
+CATALOG = json.loads((PLUGIN / "i18n/en.json").read_text(encoding="utf-8"))
+TEMPLATES = (
+    "Please install %1",
+    "Could not read display settings: %1",
+    "Unsupported scale for %1",
+    "Unsupported resolution or refresh rate for %1",
+    "Cast ended (%1)",
+)
+
+
+def translated(message):
+    """The message itself, when tr() finds a catalog entry for it."""
+    if message in CATALOG:
+        return message
+    for template in TEMPLATES:
+        head, tail = template.split("%1")
+        filled = len(message) > len(head) + len(tail) and message.startswith(head) and message.endswith(tail)
+        if template in CATALOG and filled:
+            return message
+    raise AssertionError(f"{message!r} is no key of i18n/en.json and fills no template of tr()")
+
+
+def protocol(events):
+    """What MonitorService reads from cast events: the type, the phase, the
+    detail of an error (the only detail MonitorView shows) and the exit."""
+    return [
+        (
+            e["type"],
+            e.get("phase"),
+            e["detail"] if e.get("phase") == "error" else None,
+            e.get("expected"),
+            e.get("code"),
+        )
+        for e in events
+    ]
+
 
 def helper():
     if os.environ.get("FOAMY_HELPER"):
@@ -34,8 +75,8 @@ def helper():
 
 # FAKE_MODE: "print" (write FAKE_OUTPUT, exit FAKE_EXIT), "hold" (write it,
 # then run until SIGINT or SIGTERM) or "stubborn" (like hold, but only a
-# SIGTERM ends it; it also starts a child in its process group that logs the
-# SIGTERM it gets).
+# SIGTERM ends it; it also starts a child in its process group that logs
+# "grandchild-ready" once its handler is in place, then the SIGTERM it gets).
 FAKE_FLUXCAST = r"""
 import os, signal, subprocess, sys, time
 log = os.environ["FAKE_LOG"]
@@ -56,7 +97,9 @@ signal.signal(signal.SIGTERM, on_signal)
 if mode == "stubborn":
     subprocess.Popen([sys.executable, "-I", "-c", "import signal, sys, time\n"
         "def stop(*_):\n with open(sys.argv[1], 'a') as s: s.write('grandchild\\tterm\\n')\n sys.exit(0)\n"
-        "signal.signal(signal.SIGTERM, stop)\nwhile True: time.sleep(0.05)\n", log])
+        "signal.signal(signal.SIGTERM, stop)\n"
+        "with open(sys.argv[1], 'a') as s: s.write('grandchild-ready\\n')\n"
+        "while True: time.sleep(0.05)\n", log])
 output = os.environ.get("FAKE_OUTPUT")
 if output:
     sys.stdout.write(open(output, encoding="utf-8").read())
@@ -157,7 +200,12 @@ class Bridge(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(
             json.loads(result.stdout),
-            {"ok": False, "missingPackages": ["fluxcast-git"], "peers": [], "error": "Please install fluxcast-git"},
+            {
+                "ok": False,
+                "missingPackages": ["fluxcast-git"],
+                "peers": [],
+                "error": translated("Please install fluxcast-git"),
+            },
         )
         self.assertEqual(result.stdout.count("\n"), 1)
         # Not executable counts as missing; a directory is not an executable.
@@ -233,12 +281,16 @@ class Bridge(unittest.TestCase):
         )
         self.assertIn("æøå", result.stdout)  # not \u-escaped
 
-    def test_no_peer_message_produces_empty_list(self):
-        self.output.write_text("[FluxCast WFD] No Wi-Fi Direct peers found.")
+    def test_scan_output_beyond_4_mib_is_drained_and_dropped(self):
+        # 5 MiB of noise between the peers and a late one. A bridge that
+        # stopped reading at the cap would leave FluxCast blocked on a full
+        # pipe; one that kept everything would list the late peer.
+        self.output.write_text(PEERS + ("x" * 1023 + "\n") * (5 * 1024) + "  [20] 7a:2d:91:40:0b:d1 Late via wpa_cli\n")
         result = self.run_bridge("scan")
-        self.assertEqual(result.returncode, 0)
-        self.assertEqual(json.loads(result.stdout), {"ok": True, "error": "", "peers": []})
-        self.assertEqual(self.lines("argv"), [["argv", "--wfd-scan", "--wfd-timeout", "8"]])
+        self.assertEqual(result.returncode, 0, result.stderr[-500:])
+        reply = json.loads(result.stdout)
+        self.assertTrue(reply["ok"])
+        self.assertEqual([p["index"] for p in reply["peers"]], [0, 1, 12])
 
     def test_scan_failure_reports_the_last_error_and_exit_code(self):
         self.output.write_text(
@@ -254,7 +306,9 @@ class Bridge(unittest.TestCase):
         result = self.run_bridge("scan", FAKE_EXIT="127")
         self.assertEqual(result.returncode, 1)
         self.assertFalse(json.loads(result.stdout)["ok"])
-        self.assertEqual(json.loads(result.stdout), {"ok": False, "error": "Wireless display scan failed", "peers": []})
+        self.assertEqual(
+            json.loads(result.stdout), {"ok": False, "error": translated("Wireless display scan failed"), "peers": []}
+        )
 
     def test_missing_packages_are_reported_before_starting_a_scan(self):
         self.fake.unlink()
@@ -263,7 +317,12 @@ class Bridge(unittest.TestCase):
         self.assertEqual(result.returncode, 69)
         self.assertEqual(
             json.loads(result.stdout),
-            {"ok": False, "missingPackages": ["fluxcast-git"], "peers": [], "error": "Please install fluxcast-git"},
+            {
+                "ok": False,
+                "missingPackages": ["fluxcast-git"],
+                "peers": [],
+                "error": translated("Please install fluxcast-git"),
+            },
         )
 
     def test_discovery_runs_without_capture_dependencies(self):
@@ -332,15 +391,15 @@ class Bridge(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            self.events(result.stdout),
+            protocol(self.events(result.stdout)),
             [
-                {"type": "phase", "phase": "starting", "detail": "Preparing FluxCast"},
-                {"type": "phase", "phase": "scanning", "detail": "Looking for the selected wireless display"},
-                {"type": "phase", "phase": "connecting", "detail": "Creating the Wi-Fi Direct connection"},
-                {"type": "phase", "phase": "waiting", "detail": "Waiting for the receiver to start mirroring"},
-                {"type": "phase", "phase": "casting", "detail": "Desktop and audio are being shared"},
-                {"type": "phase", "phase": "idle", "detail": "Cast ended"},
-                {"type": "exit", "expected": False, "code": 0},
+                ("phase", "starting", None, None, None),
+                ("phase", "scanning", None, None, None),
+                ("phase", "connecting", None, None, None),
+                ("phase", "waiting", None, None, None),
+                ("phase", "casting", None, None, None),
+                ("phase", "idle", None, None, None),
+                ("exit", None, None, False, 0),
             ],
         )
 
@@ -384,14 +443,14 @@ class Bridge(unittest.TestCase):
         result = self.cast(FAKE_EXIT="3")
         self.assertEqual(result.returncode, 3)
         self.assertEqual(
-            self.events(result.stdout),
+            protocol(self.events(result.stdout)),
             [
-                {"type": "phase", "phase": "starting", "detail": "Preparing FluxCast"},
-                {"type": "phase", "phase": "waiting", "detail": "Waiting for the receiver to start mirroring"},
-                {"type": "phase", "phase": "error", "detail": "receiver rejected the session"},
-                {"type": "phase", "phase": "error", "detail": "FluxCast failed"},
-                {"type": "phase", "phase": "error", "detail": "FluxCast failed"},
-                {"type": "exit", "expected": False, "code": 3},
+                ("phase", "starting", None, None, None),
+                ("phase", "waiting", None, None, None),
+                ("phase", "error", "receiver rejected the session", None, None),
+                ("phase", "error", "FluxCast failed", None, None),
+                ("phase", "error", "FluxCast failed", None, None),
+                ("exit", None, None, False, 3),
             ],
         )
         self.output.write_text("")
@@ -403,6 +462,16 @@ class Bridge(unittest.TestCase):
                 {"type": "exit", "expected": False, "code": 5},
             ],
         )
+
+    def test_an_overlong_cast_line_is_cut_and_the_next_line_counts(self):
+        # FluxCast's log can carry text from the receiver: a line is cut at
+        # 64 KiB, so the "ERROR:" after the cut is no error, and the next line
+        # is still read.
+        self.output.write_text("x" * (70 * 1024) + " ERROR: hidden\n[FluxCast WFD] ERROR: shown\n")
+        result = self.cast(FAKE_EXIT="3")
+        events = self.events(result.stdout)
+        self.assertEqual([e["detail"] for e in events if e.get("phase") == "error"], ["shown", "shown"])
+        self.assertEqual(events[-1], {"type": "exit", "expected": False, "code": 3})
 
     def test_cast_allows_fluxcast_capture_fallback_but_needs_ffmpeg(self):
         result = self.cast()
@@ -452,11 +521,12 @@ class Bridge(unittest.TestCase):
     def test_stop_uses_fluxcast_cleanup_signal_before_escalating(self):
         bridge = self.start("cast", "--peer", "AA:BB:CC:DD:EE:FF", "--monitor", "DP-1", FAKE_MODE="stubborn")
         self.wait_for("ready")
+        # A SIGTERM before the child's handler would end it without its line.
+        self.wait_for("grandchild-ready")
         bridge.send_signal(signal.SIGTERM)
         self.wait_for("signal")
         self.assertEqual(self.lines("signal"), [["signal", str(int(signal.SIGINT))]])
         self.assertEqual(self.lines("grandchild"), [])
-        time.sleep(0.2)
         bridge.send_signal(signal.SIGTERM)
         stdout, _ = bridge.communicate(timeout=10)
         # The escalation reaches FluxCast's whole process group.
@@ -466,12 +536,12 @@ class Bridge(unittest.TestCase):
         self.wait_for("grandchild")
         self.assertEqual(bridge.returncode, 0)
         self.assertEqual(
-            self.events(stdout),
+            protocol(self.events(stdout)),
             [
-                {"type": "phase", "phase": "starting", "detail": "Preparing FluxCast"},
-                {"type": "phase", "phase": "stopping", "detail": "Stopping the cast cleanly"},
-                {"type": "phase", "phase": "stopping", "detail": "Stopping the cast cleanly"},
-                {"type": "exit", "expected": True, "code": 0},
+                ("phase", "starting", None, None, None),
+                ("phase", "stopping", None, None, None),
+                ("phase", "stopping", None, None, None),
+                ("exit", None, None, True, 0),
             ],
         )
 

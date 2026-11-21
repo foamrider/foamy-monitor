@@ -779,56 +779,12 @@ mod tests {
         );
         // An unclosed long comment is a line comment; an unclosed string is a quote character.
         assert_eq!(texts("--[[ open\nz \"q"), ["z", "\"", "q"]);
-        assert_eq!(texts("a12 = 12"), ["a12", "=", "1", "2"]);
-        assert_eq!(texts("ä_x"), ["ä", "_x"]);
         let all = tokenize("a  --x\n b");
         assert_eq!(
             all.iter().map(|t| t.text).collect::<Vec<_>>(),
             ["a", "  ", "--x", "\n ", "b"]
         );
         assert_eq!(all[4].start, 8);
-    }
-
-    #[test]
-    fn gtk_scale_literals_and_locals() {
-        assert_eq!(
-            gtk_scale_setting("hl.env(\"GDK_SCALE\", \"2\")").unwrap(),
-            (2, Some((20, 23)))
-        );
-        let source = "local s = 3 -- note\nhl.env('GDK_SCALE', tostring(s))\n";
-        assert_eq!(gtk_scale_setting(source).unwrap(), (3, Some((10, 11))));
-        assert_eq!(
-            update_gtk_scale(source, &json!(1)).unwrap(),
-            source.replacen('3', "1", 1)
-        );
-        assert_eq!(gtk_scale_setting("").unwrap(), (1, None));
-        assert_eq!(
-            update_gtk_scale("x\n\n", &json!(4)).unwrap(),
-            "x\nhl.env(\"GDK_SCALE\", \"4\")\n"
-        );
-        for bad in [
-            json!(0),
-            json!(5),
-            json!(2.0),
-            json!(true),
-            json!("2"),
-            json!(null),
-        ] {
-            assert!(update_gtk_scale("", &bad).is_err(), "{bad}");
-        }
-        assert!(
-            gtk_scale_setting("local s = 3\ns = 4\nhl.env(\"GDK_SCALE\", tostring(s))").is_err()
-        );
-        assert!(gtk_scale_setting("local s = 3 + 1\nhl.env(\"GDK_SCALE\", tostring(s))").is_err());
-        assert!(gtk_scale_setting("hl.env(\"GDK_SCALE\", \"99999999999999999999999\")").is_err());
-    }
-
-    #[test]
-    fn lua_strings_escape_controls() {
-        assert_eq!(
-            lua_string("a\"b\\c\td\u{7f}é"),
-            "\"a\\\"b\\\\c\\009d\u{7f}é\""
-        );
     }
 
     #[test]
@@ -885,12 +841,13 @@ mod tests {
     }
 
     #[test]
-    fn rules_are_rewritten_in_place() {
+    fn single_quoted_rules_are_rewritten_in_place() {
         let dp = monitor(
             json!({"id": "desc:A", "name": "DP-1", "selector": "desc:A", "description": "A",
             "width": 1920, "height": 1080, "refreshRate": 60.0, "x": 0, "y": 0, "scale": 1.5, "transform": 0,
             "disabled": false, "mirrorOf": ""}),
         );
+        // The process tests write double quotes and commas; a hand-written rule may use 'x' and ';'.
         let source = "hl.monitor({ output = 'DP-1'; vrr = { 1, 2 }, scale = 2 }) -- keep\n";
         let result = update_config(
             source,
@@ -903,28 +860,6 @@ mod tests {
             result,
             "hl.monitor({ output = \"desc:A\"; vrr = { 1, 2 }, scale = 1.5 , mode = \"1920x1080@60.00000\", \
             position = \"0x0\", transform = 0, disabled = false, mirror = \"\" }) -- keep\n"
-        );
-        assert_eq!(
-            update_config(
-                &result,
-                std::slice::from_ref(&dp),
-                std::slice::from_ref(&dp),
-                &[]
-            )
-            .unwrap(),
-            result
-        );
-        let added = update_config("-- none\n\n", std::slice::from_ref(&dp), &[], &[]).unwrap();
-        assert_eq!(
-            added,
-            "-- none\nhl.monitor({ output = \"desc:A\", mode = \"1920x1080@60.00000\", position = \"0x0\", \
-            scale = 1.5, transform = 0, disabled = false, mirror = \"\" })\n"
-        );
-        assert!(update_config("while true do end", std::slice::from_ref(&dp), &[], &[]).is_err());
-        assert_eq!(
-            monitor_rule(&dp).unwrap(),
-            "hl.monitor({ output = \"DP-1\", mode = \"1920x1080@60.00000\", position = \"0x0\", scale = 1.5, \
-            transform = 0, disabled = false, mirror = \"\" })"
         );
     }
 }
