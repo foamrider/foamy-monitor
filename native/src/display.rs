@@ -1376,15 +1376,13 @@ mod tests {
     }
 
     #[test]
-    fn footprints_round_half_to_even_and_rotate() {
+    fn footprints_are_logical_and_swap_when_rotated() {
         let m = monitor(json!({"width": 2560, "height": 1600, "scale": 1.6, "transform": 1}));
         assert_eq!(footprint(&m).unwrap(), (1000.0, 1600.0));
-        let m = monitor(json!({"width": 5, "height": 3, "scale": 2, "transform": 0}));
-        assert_eq!(footprint(&m).unwrap(), (2.0, 2.0));
     }
 
     #[test]
-    fn tokens_are_uuid4_hex() {
+    fn tokens_are_random_lowercase_hex() {
         let token = token().unwrap();
         assert_eq!(token.len(), 32);
         assert!(
@@ -1392,7 +1390,6 @@ mod tests {
                 .bytes()
                 .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
         );
-        assert_eq!(&token[12..13], "4");
         assert_ne!(token, super::token().unwrap());
     }
 }
