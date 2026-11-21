@@ -796,12 +796,14 @@ ShellRoot {
   function wifiH() {
     eq(shell.service.wirelessPeers.length, 2, "the new scan lists the receivers")
     // Picking a receiver during a refresh stops the scan, then casts.
-    shell.sh("printf 5 > \"$FOAMY_CALLS.scandelay\"", function () {
+    shell.sh("printf 5 > \"$FOAMY_CALLS.scandelay\"; printf '%s\\n' refresh-start >> \"$FOAMY_CALLS\"", function () {
       shell.service.wirelessScannedAt -= 30000
       panel(1).popup.bodyItem.scanOrStop()
+      // runtime.py looks for the stop signal that FluxCast logs; a stop sent
+      // before its handlers are in place would end it without that line.
       until(function () {
-        return shell.service.scanRunning
-      }, "the Scan button's refresh", wifiJ)
+        return shell.service.scanRunning && shell.loggedAfter("refresh-start", "fluxcast-ready")
+      }, "the Scan button's refresh reached FluxCast", wifiJ)
     })
   }
   function wifiJ() {
