@@ -1388,7 +1388,8 @@ mod tests {
         assert!(
             token
                 .bytes()
-                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()),
+            "{token}"
         );
         assert_ne!(token, super::token().unwrap());
     }

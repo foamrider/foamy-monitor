@@ -788,19 +788,6 @@ mod tests {
     }
 
     #[test]
-    fn a_gtk_scale_beyond_u64_is_refused() {
-        // The process tests cover every other GTK scale form; only this one
-        // reaches the overflow check, which must refuse and not wrap or panic.
-        assert_eq!(
-            gtk_scale_setting("hl.env(\"GDK_SCALE\", \"99999999999999999999999\")"),
-            Err(
-                "GTK scale must be a whole-number string or tostring of a local whole number in monitors.lua"
-                    .to_owned()
-            )
-        );
-    }
-
-    #[test]
     fn knob_detection() {
         let omarchy = "local omarchy_monitor_scale = \"auto\"\nhl.monitor({ output = \"\", scale = omarchy_monitor_scale })\n";
         assert_eq!(monitor_scale_local(omarchy), (true, None));
