@@ -108,7 +108,8 @@ if os.path.exists(os.environ["FOAMY_CALLS"] + ".textfail"):
         # With $FOAMY_CALLS.peers present a scan instead finishes after
         # $FOAMY_CALLS.scandelay seconds (default 0.8) and prints those peers
         # (FluxCast's "[n] MAC name via source" lines). With
-        # $FOAMY_CALLS.stubborn present it ignores SIGINT.
+        # $FOAMY_CALLS.stubborn present it ignores SIGINT. A "fluxcast-ready"
+        # line in $FOAMY_CALLS says its signal handlers are in place.
         "fluxcast": LOGGER
         + """
 import signal
@@ -124,6 +125,8 @@ if os.path.exists(os.environ["FOAMY_CALLS"] + ".stubborn"):
         with open(os.environ["FOAMY_CALLS"], "a") as log:
             log.write("fluxcast-ignored\\t%d\\n" % number)
     signal.signal(signal.SIGINT, ignore)
+with open(os.environ["FOAMY_CALLS"], "a") as log:
+    log.write("fluxcast-ready\\n")
 peers = os.environ["FOAMY_CALLS"] + ".peers"
 if "--wfd-scan" in sys.argv and os.path.exists(peers):
     delay = os.environ["FOAMY_CALLS"] + ".scandelay"
@@ -132,6 +135,9 @@ if "--wfd-scan" in sys.argv and os.path.exists(peers):
     sys.exit(0)
 time.sleep(30)
 """,
+        # The helper checks for ffmpeg before a cast; this keeps the machine's
+        # own ffmpeg (or its absence) out of the runtime tests.
+        "ffmpeg": "#!/bin/sh\nexit 0\n",
     }
     for name, body in scripts.items():
         path = directory / name
