@@ -113,8 +113,6 @@ if args[0]=='monitors': print(rows if isinstance(rows, str) else json.dumps(rows
 elif args[0]=='configerrors': print(errors.read_text() if errors.exists() else os.environ.get('TEST_CONFIG_ERRORS', ''))
 elif args[0]=='eval' and os.environ.get('TEST_EVAL_ERROR'):
     print('error: rejected by the test compositor')
-elif args[0]=='eval' and os.environ.get('TEST_EVAL_IGNORE'):
-    print('ok')  # accepts the rules and changes nothing
 elif args[0] in ('eval','reload'):
     if args[0]=='eval': source=args[1]
     else: source=(Path(os.environ['XDG_CONFIG_HOME'])/'hypr/monitors.lua').read_text()
@@ -142,6 +140,12 @@ elif args[0] in ('eval','reload'):
             for key in ('scale','transform','disabled'):
                 if key in values: row[key]=values[key]
             if 'mirror' in values: row['mirrorOf']=values['mirror']
+    # One eval that the compositor accepts and then shows at another advertised
+    # refresh rate; the marker goes with it, so the next eval (the rollback) works.
+    wrong=Path(os.environ['TEST_CALLS'] + '.wrong')
+    if args[0]=='eval' and wrong.exists():
+        wrong.unlink()
+        for row in rows: row['refreshRate']=120.0
     tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(rows));tmp.replace(path)
     print('ok')
 else: sys.exit(1)
@@ -194,6 +198,7 @@ class Compositor:
         self.gtk_environment = self.directory / "gtk-environment.json"
         self.calls = self.directory / "calls.log"
         self.errors = self.directory / "calls.log.errors"
+        self.wrong = self.directory / "calls.log.wrong"
         self.runs = 0
         self.env = {}
         self.reset()
@@ -210,8 +215,9 @@ class Compositor:
         self.displays.write_text(json.dumps(displays if displays is not None else [monitor()]))
         self.gtk_environment.write_text(json.dumps(dict(compositor=gtk, systemd=gtk, dbus=gtk)))
         self.calls.write_text("")
-        if self.errors.exists():
-            self.errors.unlink()
+        for marker in (self.errors, self.wrong):
+            if marker.exists():
+                marker.unlink()
         self.env = {
             "PATH": str(self.bin),
             "HOME": str(self.directory / "home"),
@@ -352,6 +358,7 @@ class DisplayModelTests(unittest.TestCase):
             OMARCHY_CONFIG.replace("local omarchy_gdk_scale = 2\n", ""),
             OMARCHY_CONFIG.replace("local omarchy_gdk_scale", "omarchy_gdk_scale"),
             OMARCHY_CONFIG + "omarchy_gdk_scale = 3\n",
+            OMARCHY_CONFIG.replace('hl.env("GDK_SCALE"', 'omarchy_gdk_scale = 3\nhl.env("GDK_SCALE"'),
             OMARCHY_CONFIG + "local omarchy_gdk_scale = 3\n",
             OMARCHY_CONFIG + "print(omarchy_gdk_scale)\n",
             "do\n" + OMARCHY_CONFIG + "end\n",
@@ -404,6 +411,8 @@ class DisplayModelTests(unittest.TestCase):
             ('hl.env("GDK_SCALE", "2") hl.env("OTHER", "1")', 2),
             ('hl.env("OTHER", "2")', 1),
             ('local s = 3\nhl.env("GDK_SCALE", tostring(s))', 3),
+            # Digits belong to the name: scale2 is one Lua identifier.
+            ('local scale2 = 3\nhl.env("GDK_SCALE", tostring(scale2))', 3),
         ]:
             with self.subTest(source=source):
                 self.assertEqual(self.gtk_status(source), {"base": value, "value": value, "error": ""})
@@ -433,7 +442,7 @@ class DisplayModelTests(unittest.TestCase):
         self.c.reset(source)
         for invalid in [0, 1.5, True, "2", 5, None, 2.0]:
             reply = self.c.call("gtk-scale", {"value": invalid})
-            self.assertEqual(reply["error"], "GTK scale must be 1, 2, 3, or 4", invalid)
+            self.assertEqual(reply.get("error"), "GTK scale must be 1, 2, 3, or 4", invalid)
         self.assertEqual(self.c.call("gtk-scale", {})["error"], "GTK scale must be 1, 2, 3, or 4")
 
     def test_gtk_scale_stages_without_touching_config_or_environment(self):
@@ -558,11 +567,14 @@ class DisplayModelTests(unittest.TestCase):
         # A silent reset during a trial would forget the running worker and
         # the snapshot a revert needs.
         self.c.reset("")
-        path = Path(self.c.call("status")["statePath"])
+        status = self.c.call("status")
+        path = Path(status["statePath"])
+        # A real draft id: after a silent reset this patch would succeed.
+        patch = {"id": status["state"]["draft"][0]["id"], "changes": {"x": 5}}
         for content in (b'{"phase": "testing"', b"[]", b"\xff"):
             with self.subTest(content=content):
                 path.write_bytes(content)
-                for action, request in (("status", None), ("patch", {"id": "x", "changes": {}})):
+                for action, request in (("status", None), ("patch", patch)):
                     reply = self.c.call(action, request)
                     self.assertFalse(reply["ok"], action)
                     self.assertTrue(reply["error"], action)
@@ -789,9 +801,15 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
                 'hl.monitor({ output = "DP-1" })\nhl.monitor({ output = "desc:Test DP-1" })',
                 "Duplicate rules for DP-1; remove the duplicate before saving",
             ),
-            (
-                'if docked then hl.monitor({ output = "DP-1" }) end',
-                "Conditional monitor configuration must be edited in monitors.lua",
+            *(
+                (source, "Conditional monitor configuration must be edited in monitors.lua")
+                for source in (
+                    'if docked then hl.monitor({ output = "DP-1" }) end',
+                    'while docked do hl.monitor({ output = "DP-1" }) end',
+                    'for i = 1, 2 do hl.monitor({ output = "DP-1" }) end',
+                    'repeat hl.monitor({ output = "DP-1" }) until true',
+                    'local function f() hl.monitor({ output = "DP-1" }) end',
+                )
             ),
             ("hl.monitor(rule)", "Use literal hl.monitor({...}) rules in monitors.lua before saving"),
             ('x = 1; hl.monitor({ output = "DP-1" })', "Monitor rules must be standalone calls in monitors.lua"),
@@ -1061,16 +1079,20 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertIs(saved["monitorChanges"], True)
         return self.wait_phase("testing")
 
-    def test_rejected_or_ignored_settings_end_the_trial(self):
-        # The compositor refuses the rules, or accepts them and changes nothing:
-        # the trial ends at once with the reason, and nothing is saved.
-        # The compositor's own answer leads the error; the rollback may add to it.
-        for extra, expected, exact in [
-            ({"TEST_EVAL_ERROR": "1"}, "error: rejected by the test compositor", False),
-            ({"TEST_EVAL_IGNORE": "1"}, translated("The display did not accept these settings"), True),
+    def test_refused_or_unconfirmed_settings_end_the_trial(self):
+        # The compositor refuses the rules, or accepts them and then shows
+        # other values: the trial ends with the reason (after the verify wait
+        # when the values differ), the displays are rolled back, and nothing
+        # is saved. The compositor's own answer leads the error of a refusal;
+        # the rollback may add to it.
+        for name, extra, expected, exact in [
+            ("refused", {"TEST_EVAL_ERROR": "1"}, "error: rejected by the test compositor", False),
+            ("shown wrong", None, translated("The display did not accept these settings"), True),
         ]:
-            with self.subTest(extra=extra):
+            with self.subTest(name):
                 self.c.reset(self.original)
+                if extra is None:
+                    self.c.wrong.touch()
                 ident = self.call("status")["state"]["draft"][0]["id"]
                 self.assertTrue(self.call("patch", {"id": ident, "changes": {"scale": 1.25}})["ok"])
                 self.assertTrue(self.call("apply", extra=extra)["ok"])
@@ -1079,7 +1101,9 @@ class WorkerIntegrationTests(unittest.TestCase):
                     self.assertEqual(error, expected)
                 else:
                     self.assertTrue(error.startswith(expected), error)
-                self.assertEqual(json.loads(self.displays.read_text())[0]["scale"], 1)
+                # The trial's scale 1.25 and the wrong 120 Hz are gone again.
+                live = json.loads(self.displays.read_text())[0]
+                self.assertEqual((live["scale"], live["refreshRate"]), (1, 60.0))
                 self.assertEqual(self.config.read_text(), self.original)
                 self.assertNotIn("hyprctl\treload", self.c.calls.read_text())
 
