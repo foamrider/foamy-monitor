@@ -11,8 +11,9 @@ import "plugin/kit"
 // brightness and FluxCast (tests/fakebin.py): three bar instances (three
 // monitors), one leader and one startup status for all of them, state-file
 // and Hyprland-event refreshes with every popup closed, the lazy popup body,
-// the single keyboard cursor, serialised brightness, translations and RTL,
-// and the teardown that stops FluxCast when the last panel goes.
+// the single keyboard cursor, serialised brightness, a running trial (Revert
+// and Keep, Esc reverts), the wireless cache, the cast, RTL, and the
+// teardown that stops a running cast when the last panel goes.
 //
 // Each step waits for the state it checks (FoamyWait.waitFor), so a loaded
 // machine only makes the run slower. wait.after() is kept where the time is
@@ -105,6 +106,31 @@ ShellRoot {
     }
   }
 
+  // The fakes' calls log ($FOAMY_CALLS). blockLoading makes the read after
+  // reload() see the file as it is now, so a wait on it is never stale.
+  FileView {
+    id: callsLog
+    path: Quickshell.env("FOAMY_CALLS")
+    blockLoading: true
+    printErrors: false
+  }
+  // The calls logged after the last `marker` line (see mark()).
+  function linesAfter(marker) {
+    callsLog.reload()
+    var lines = String(callsLog.text()).split("\n")
+    var at = lines.lastIndexOf(marker)
+    return at < 0 ? [] : lines.slice(at + 1)
+  }
+  function loggedAfter(marker, prefix) {
+    return linesAfter(marker).some(function (line) {
+      return line.indexOf(prefix) === 0
+    })
+  }
+  // Appends `marker` to the calls log, then runs next().
+  function mark(marker, next) {
+    sh("printf '%s\\n' '" + marker + "' >> \"$FOAMY_CALLS\"", next)
+  }
+
   // Another bar instance or the trial worker writing the shared state file.
   Process {
     id: external
@@ -117,12 +143,13 @@ ShellRoot {
     return leaders() === 1 && service.members === 3 && service.statusRuns >= 1 && service.liveMonitors.length === 3 && service.statePath !== "" && displayIdle()
   }, "the startup status", stepOne)
 
-  // The trial worker's phase change, written to the helper's state file. A
+  // The trial worker's phase change, written to the helper's state file
+  // under its state.lock and replaced atomically, as the helper does. A
   // "testing" phase gets a stand-in worker (a process whose command line
   // holds `worker --token runtime-trial`, as the helper checks); "dead"
   // writes a testing phase whose worker is gone; "idle" ends the stand-in.
   function setPhase(phase, then) {
-    sh("python3 - '" + service.statePath + "' " + phase + " <<'PY'\n" + "import json, os, signal, subprocess, sys, time\n" + "p, phase = sys.argv[1], sys.argv[2]\n" + "s = json.load(open(p))\n" + "if s.get('workerPid'):\n" + "    try: os.kill(s['workerPid'], signal.SIGKILL)\n" + "    except OSError: pass\n" + "s.update(phase='testing' if phase == 'dead' else phase, deadline=time.time() + 15 if phase != 'idle' else 0, token='runtime-trial', workerPid=0)\n" + "if phase == 'dead':\n" + "    s['snapshot'] = s.get('base', [])\n" + "if phase == 'testing':\n" + "    s['workerPid'] = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)', 'worker', '--token', 'runtime-trial'], start_new_session=True).pid\n" + "s['revision'] = s.get('revision', 0) + 1\n" + "json.dump(s, open(p, 'w'))\n" + "PY", then)
+    sh("python3 - '" + service.statePath + "' " + phase + " <<'PY'\n" + "import fcntl, json, os, signal, subprocess, sys, time\n" + "p, phase = sys.argv[1], sys.argv[2]\n" + "lock = open(os.path.join(os.path.dirname(p), 'state.lock'), 'a')\n" + "fcntl.flock(lock, fcntl.LOCK_EX)\n" + "s = json.load(open(p))\n" + "if s.get('workerPid'):\n" + "    try: os.kill(s['workerPid'], signal.SIGKILL)\n" + "    except OSError: pass\n" + "s.update(phase='testing' if phase == 'dead' else phase, deadline=time.time() + 15 if phase != 'idle' else 0, token='runtime-trial', workerPid=0)\n" + "if phase == 'dead':\n" + "    s['snapshot'] = s.get('base', [])\n" + "if phase == 'testing':\n" + "    s['workerPid'] = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)', 'worker', '--token', 'runtime-trial'], start_new_session=True).pid\n" + "s['revision'] = s.get('revision', 0) + 1\n" + "with open(p + '.tmp', 'w') as out:\n" + "    json.dump(s, out)\n" + "os.replace(p + '.tmp', p)\n" + "PY", then)
   }
   function leaderPanel() {
     for (var i = 0; i < panelCount; i++)
@@ -148,7 +175,8 @@ ShellRoot {
   function stepOne() {
     eq(shell.leaders(), 1, "one leader across three bar instances")
     eq(shell.service.members, 3, "three members")
-    eq(panel(0).barGlyph.codePointAt(0), Quickshell.screens.length > 1 ? 0xf037a : 0xf0379, "bar glyph survives as an escape")
+    // The harness has one screen; the glyph is an escaped private-use code point.
+    eq(panel(0).barGlyph.codePointAt(0), 0xf0379, "one screen, no cast: the single-display glyph")
     eq(shell.service.statusRuns, 1, "one startup status for every instance")
     eq(shell.service.liveMonitors.length, 3, "three displays read")
     eq(panel(0).popup.bodyItem, null, "popup body is lazy")
@@ -222,10 +250,15 @@ ShellRoot {
   }
 
   function inflightA() {
-    shell.service.refresh()
-    eq(shell.service.commandProc.running, true, "a slow status run is in flight")
-    // The fake hyprctl reads the outputs as it starts, then answers 2 s later.
-    wait.after(300, inflightB)
+    shell.mark("inflight-start", function () {
+      shell.service.refresh()
+      eq(shell.service.commandProc.running, true, "a slow status run is in flight")
+      // The fake hyprctl logs its call and reads the outputs at once, then
+      // answers 2 s later: once its line is logged, a change is too late for it.
+      until(function () {
+        return shell.loggedAfter("inflight-start", "hyprctl\tmonitors")
+      }, "the slow run read the outputs", inflightB)
+    })
   }
   function inflightB() {
     shell.sh("python3 - <<'PY'\nimport json, os\np = os.path.join(os.environ['FOAMY_FAKEBIN'], 'monitors.json')\nrows = json.load(open(p))\nrows[2]['y'] = 100\njson.dump(rows, open(p, 'w'))\nPY", inflightC)
@@ -246,13 +279,20 @@ ShellRoot {
     // Every output gone for a moment (a KVM switch, undocking): that status
     // run fails, and the next good one must clear its error.
     shell.sh("rm -f \"$FOAMY_CALLS.hyprdelay\"; cd \"$FOAMY_FAKEBIN\" && cp monitors.json monitors.json.kept && printf '[]' > monitors.json", function () {
-      shell.afterStatus(statusErrorA)
+      shell.service.refresh()
+      until(function () {
+        return shell.service.error === "No connected displays" && displayIdle()
+      }, "the failed status run", statusErrorA)
     })
   }
   function statusErrorA() {
     eq(shell.service.error, "No connected displays", "a failed status run shows its error")
+    eq(shell.service.liveMonitors.length, 3, "a failed status run keeps the displays it had")
     shell.sh("cd \"$FOAMY_FAKEBIN\" && mv monitors.json.kept monitors.json", function () {
-      shell.afterStatus(statusErrorB)
+      shell.service.refresh()
+      until(function () {
+        return shell.service.error === "" && shell.service.liveMonitors.length === 3 && displayIdle()
+      }, "the next good status run", statusErrorB)
     })
   }
   function statusErrorB() {
@@ -264,18 +304,6 @@ ShellRoot {
       return view && view.brightnessAvailable && displayIdle() && brightnessIdle()
     }, "the popup's brightness read", stepFive)
   }
-  // Runs one status and calls next once it has landed.
-  function afterStatus(next) {
-    var before = service.statusRuns
-    service.refresh()
-    until(function () {
-      return service.statusRuns > before && displayIdle()
-    }, "a status run", function () {
-      // One more turn after the run ends, so its stdout has been handled too.
-      wait.after(100, next)
-    })
-  }
-
   function stepFive() {
     var first = panel(0)
     var view = first.popup.bodyItem
@@ -327,7 +355,6 @@ ShellRoot {
       shell.service.changeBrightness(shell.service.liveMonitors[i].name, {
         delta: 5
       }, panel(i))
-    eq(first.brightnessIpc("abc"), "error: expected a percentage such as 40, +5 or -5", "IPC rejects junk")
     until(function () {
       var moved = shell.service.transaction.draft.find(function (m) {
         return m.name === "DP-1"
@@ -342,7 +369,11 @@ ShellRoot {
       return m.name === "DP-1"
     }).x, shell.runsBefore + 30, "three quick arrows nudge the display by 30 px")
     eq(shell.service.brightness["DP-2"].percent, 55, "a wheel step before the first read lands after it")
-    check(mockBar.summoned.length >= 1 && mockBar.summoned[0].id === "omarchy.osd" && mockBar.summoned[0].payload.icon === "brightness", "the wheel shows the Omarchy OSD: " + JSON.stringify(mockBar.summoned))
+    // DP-1 and DP-2 had no reading: both steps waited for a read and show the
+    // OSD once it landed, at the new level (50 + 5).
+    check(mockBar.summoned.length >= 2 && mockBar.summoned.every(function (s) {
+      return s.id === "omarchy.osd" && s.payload.icon === "brightness" && s.payload.value === 55
+    }), "every waited step shows the Omarchy OSD at the new level: " + JSON.stringify(mockBar.summoned))
     eq(shell.service.brightnessProc.running, false, "brightness queue drained")
     panel(1).close()
     // The level changed elsewhere (laptop keys, the monitor's buttons) while
@@ -551,19 +582,23 @@ ShellRoot {
     eq(shell.service.scanRunning, true, "the scan survives the rebuild")
     eq(shell.leaders(), 1, "one leader after the rebuild")
     // ---- A running trial against every UI state ----
-    shell.leaderPanel().open()
-    // The trial worker's phase change, written to the helper's state file.
+    // Every popup is closed and no body is built yet: the trial must open a
+    // popup by itself (offscreen no bar is on the focused output, so the
+    // leader's), and the body built then must land on Revert.
+    eq(shell.openCount(), 0, "every popup closed before the trial")
     shell.setPhase("testing", function () {
       until(function () {
-        return shell.service.testing && shell.leaderPanel().opened && displayIdle()
+        var view = shell.leaderPanel().popup.bodyItem
+        return shell.service.testing && shell.leaderPanel().opened && view && view.cursorKey === "revert" && displayIdle()
       }, "the trial", trialA)
     })
   }
   function trialA() {
     eq(shell.service.testing, true, "the trial arrives through the state file")
-    eq(shell.leaderPanel().opened, true, "the popup shows the trial")
+    eq(shell.leaderPanel().opened, true, "the trial opens the popup by itself")
     eq(shell.openCount(), 1, "one popup shows the trial")
     var view = shell.leaderPanel().popup.bodyItem
+    eq(view.cursorKey, "revert", "a view built during the trial lands on Revert")
     eq(JSON.stringify(view.stops), JSON.stringify(["revert", "keep"]), "only Revert and Keep take the cursor")
     view.setTab("Advanced")
     check(view.footerShown, "the trial footer shows on Advanced")
@@ -578,6 +613,17 @@ ShellRoot {
     eq(shell.openCount(), 1, "closing the popup during a trial reopens it")
     var view = shell.leaderPanel().popup.bodyItem
     eq(view.cursorKey, "revert", "the reopened trial lands on Revert")
+    // Esc during a trial reverts it: the helper records the decision only for
+    // the running trial's token.
+    view.closeRequested()
+    until(function () {
+      return shell.service.transaction.decision === "revert" && displayIdle()
+    }, "Esc sent revert", trialB2)
+  }
+  function trialB2() {
+    eq(shell.service.transaction.decision, "revert", "Esc reverts the running trial")
+    eq(shell.service.error, "", "the helper took the revert for this trial")
+    eq(shell.leaderPanel().opened, true, "the popup stays during the revert")
     shell.setPhase("idle", function () {
       until(function () {
         return !shell.service.testing && displayIdle()
@@ -607,6 +653,19 @@ ShellRoot {
   // ---- Wireless receivers cached in the service (2-minute TTL) ----
   // The fake FluxCast lists $FOAMY_CALLS.peers after $FOAMY_CALLS.scandelay s.
   property int scansBefore: 0
+  // The first item under `item` (depth first) whose text is `text`.
+  function findText(item, text) {
+    if (!item)
+      return null
+    if (item.text === text)
+      return item
+    for (var i = 0; i < item.children.length; i++) {
+      var found = findText(item.children[i], text)
+      if (found)
+        return found
+    }
+    return null
+  }
   function addresses() {
     return shell.service.wirelessPeers.map(function (p) {
       return p.address
@@ -617,7 +676,7 @@ ShellRoot {
     shell.service.wirelessPeers = []
     shell.service.wirelessScannedAt = 0
     shell.scansBefore = shell.service.wirelessScanRuns
-    shell.sh("printf '[1] 7A:2D:91:40:0B:CE Living Room TV via NetworkManager\\n[2] 02:11:22:33:44:55 via NetworkManager\\n' > \"$FOAMY_CALLS.peers\"; printf 1.2 > \"$FOAMY_CALLS.scandelay\"", wifiB)
+    shell.sh("printf '[1] 7A:2D:91:40:0B:CE <b>Living</b> Room TV via NetworkManager\\n[2] 02:11:22:33:44:55 via NetworkManager\\n' > \"$FOAMY_CALLS.peers\"; printf 1.2 > \"$FOAMY_CALLS.scandelay\"", wifiB)
   }
   function wifiB() {
     panel(0).open()
@@ -658,6 +717,10 @@ ShellRoot {
     eq(view.scanIndicatorShown, false, "no searching row with results")
     view.place("peer:1")
     check(view.itemFor("peer:1") !== null, "both receivers are listed")
+    // A nearby device chooses its own name: markup in it is shown as text.
+    view.place("peer:0")
+    var label = shell.findText(view.itemFor("peer:0"), "<b>Living</b> Room TV")
+    check(label !== null && label.textFormat === Text.PlainText, "a receiver name is shown as plain text")
     panel(0).close()
     eq(shell.service.demanded, false, "popup closed")
     eq(shell.service.wirelessPeers.length, 2, "closing the popup keeps the receivers in the service")
@@ -742,15 +805,17 @@ ShellRoot {
     eq(shell.service.scanRunning, true, "a refresh runs")
     eq(shell.service.wirelessPeers.length, 2, "the Scan button keeps the list too")
     view.connectPeer(shell.service.wirelessPeers[0])
-    check(shell.service.pendingCast !== null, "the pick waits for the scan to stop")
+    eq(shell.service.castRunning, false, "no cast while the scan runs")
     until(function () {
-      return !shell.service.scanRunning && shell.service.pendingCast === null && shell.service.castRunning
+      return !shell.service.scanRunning && shell.service.castRunning
     }, "the cast after the scan", wifiK)
   }
   function wifiK() {
     eq(shell.service.scanRunning, false, "the refresh was stopped")
     eq(shell.service.pendingCast, null, "the pick was taken")
-    check(shell.service.castPhase !== "idle", "the cast started after the scan: " + shell.service.castPhase)
+    // The fake FluxCast prints nothing here, so the bridge stays at "starting".
+    eq(shell.service.castPhase, "starting", "the cast started after the scan")
+    eq(shell.service.wirelessError, "", "the cast has no error")
     eq(shell.service.wirelessPeers.length, 2, "a stopped refresh keeps the list")
     shell.service.stopCast()
     panel(1).close()
@@ -765,16 +830,19 @@ ShellRoot {
   // The first stop is SIGINT to FluxCast; the watchdog's second signal makes
   // the bridge SIGTERM it. The watchdog runs at 500 ms here (12 s live).
   function scanStopA() {
+    eq(shell.service.castPhase, "idle", "a stopped cast ends idle")
+    eq(shell.service.wirelessError, "", "a stopped cast is no failure")
     var watchdog = shell.service.scanStopWatchdog
     check(watchdog !== undefined, "the scan has a stop watchdog")
     if (watchdog)
       watchdog.interval = 500
-    shell.service.startWirelessScan()
-    until(function () {
-      return shell.service.scanRunning
-    }, "the stubborn scan", function () {
-      // Let FluxCast start and install its handlers before the stop.
-      wait.after(300, scanStopB)
+    shell.mark("stubborn-start", function () {
+      shell.service.startWirelessScan()
+      // The stop must reach a FluxCast that already ignores SIGINT; a stop
+      // that came first would end it at once and prove nothing.
+      until(function () {
+        return shell.service.scanRunning && shell.loggedAfter("stubborn-start", "fluxcast-ready")
+      }, "the stubborn FluxCast is ready", scanStopB)
     })
   }
   function scanStopB() {
@@ -789,16 +857,32 @@ ShellRoot {
       eq(shell.service.wirelessScanState !== "error" && shell.service.wirelessScanState !== "scanning", true, "a stopped scan is no failure: " + shell.service.wirelessScanState)
       if (watchdog)
         watchdog.interval = 12000
-      shell.sh("rm -f \"$FOAMY_CALLS.stubborn\"", function () {
-        shell.panelCount = 0
+      // A cast that reaches the receiver ($FOAMY_CALLS.casting) runs when
+      // the last panel goes: the teardown must stop it.
+      shell.sh("rm -f \"$FOAMY_CALLS.stubborn\"; touch \"$FOAMY_CALLS.casting\"", function () {
+        shell.service.connectWirelessPeer({
+          address: "0A:0B:0C:0D:0E:0F"
+        }, "Den", "eDP-1")
         until(function () {
-          return shell.service.teardowns === 1 && !shell.service.scanRunning && !shell.service.castRunning
-        }, "the teardown", stepEight)
+          return shell.service.castPhase === "casting"
+        }, "a cast before the teardown", castingA)
       })
+    })
+  }
+  function castingA() {
+    eq(shell.service.activelyCasting, true, "the cast reached the receiver")
+    eq(panel(0).barGlyph.codePointAt(0), 0xf037a, "an active cast shows the multi-display glyph")
+    eq(panel(1).popup.bodyItem.wirelessPhaseLabel(), "Casting to Den", "the Wireless tab says what is shared")
+    shell.mark("teardown-start", function () {
+      shell.panelCount = 0
+      until(function () {
+        return shell.service.teardowns === 1 && !shell.service.scanRunning && !shell.service.castRunning
+      }, "the teardown", stepEight)
     })
   }
 
   function stepEight() {
+    eq(shell.service.castRunning, false, "the teardown stopped the cast")
     eq(shell.service.members, 0, "every panel gone")
     eq(shell.service.teardowns, 1, "teardown after the last panel left")
     eq(shell.service.active, false, "service idle")

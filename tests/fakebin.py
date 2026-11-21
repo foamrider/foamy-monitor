@@ -109,7 +109,8 @@ if os.path.exists(os.environ["FOAMY_CALLS"] + ".textfail"):
         # $FOAMY_CALLS.scandelay seconds (default 0.8) and prints those peers
         # (FluxCast's "[n] MAC name via source" lines). With
         # $FOAMY_CALLS.stubborn present it ignores SIGINT. A "fluxcast-ready"
-        # line in $FOAMY_CALLS says its signal handlers are in place.
+        # line in $FOAMY_CALLS says its signal handlers are in place. With
+        # $FOAMY_CALLS.casting present a cast reaches its receiver.
         "fluxcast": LOGGER
         + """
 import signal
@@ -133,6 +134,9 @@ if "--wfd-scan" in sys.argv and os.path.exists(peers):
     time.sleep(float(open(delay).read()) if os.path.exists(delay) else 0.8)
     print(open(peers).read(), flush=True)
     sys.exit(0)
+if "--wfd-peer" in sys.argv and os.path.exists(os.environ["FOAMY_CALLS"] + ".casting"):
+    # The receiver accepted the stream: the bridge reports "casting".
+    print("[FluxCast WFD RTSP] PLAY accepted; media stream started.", flush=True)
 time.sleep(30)
 """,
         # Every helper run starts as `bash -c 'exec … foamy-monitor-helper'`

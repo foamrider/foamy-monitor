@@ -2,9 +2,11 @@
 """Load Foamy Monitor offscreen on Omarchy 4.5
 with the foamy-kit harness: isolated HOME/XDG/runtime dirs, no Wayland or
 Hyprland, and fake hyprctl/brightness/FluxCast on a PATH without Omarchy's
-scripts (tests/fakebin.py). Checks tests/qml/Runtime.qml, `qs ipc call
-foamy.monitor status` answered by the leader, that brightness jobs never
-overlapped, and that the teardown stopped FluxCast.
+scripts (tests/fakebin.py). Checks tests/qml/Runtime.qml; the leader's IPC
+(its function names, `status`, and `brightness` refusing junk); from the
+fakes' calls: that brightness jobs never overlapped, the cast's FluxCast
+command, the text size command, that the stop of a stubborn scan met a
+FluxCast that ignored it, and that the teardown stopped the running cast.
 
 FOAMY_KIT (default ~/GitHub/Personal/foamy-kit) provides the harness.
 The host is Omarchy 4.5: FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else
@@ -22,8 +24,7 @@ import fakebin  # noqa: E402
 
 KIT = Path(os.environ.get("FOAMY_KIT", Path.home() / "GitHub/Personal/foamy-kit"))
 if not (KIT / "preview/harness.py").exists():
-    print(f"SKIP: foamy-kit harness not found at {KIT} (set FOAMY_KIT)")
-    raise SystemExit(0)
+    raise SystemExit(f"foamy-kit harness not found at {KIT} (set FOAMY_KIT)")
 # Omarchy 4.5 only by default; set before the harness reads its hosts.
 if not os.environ.get("FOAMY_HOST_45"):
     _root = os.environ.get("OMARCHY_TEST_ROOT")
@@ -38,22 +39,110 @@ hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
 """
 
 
-def ipc_status(run):
-    """The leader's answer to `status` once the scene logged FOAMY READY."""
+# The IPC functions that keybindings and scripts call (README "IPC").
+IPC_FUNCTIONS = {
+    "open",
+    "close",
+    "toggle",
+    "show",
+    "hide",
+    "scanWireless",
+    "stopWireless",
+    "status",
+    "state",
+    "brightness",
+}
+
+
+def instance(run):
+    """The qs instance id once the scene logged FOAMY READY and its IPC socket exists."""
     if not run.wait_for_log("FOAMY READY", timeout=60):
         return None
     by_id = Path(run.env["XDG_RUNTIME_DIR"]) / "quickshell/by-id"
-    ids = harness.wait_for(lambda: [p.name for p in by_id.iterdir()] if by_id.is_dir() else [], 10)
-    if not ids:
-        return None
-    result = subprocess.run(
-        ["qs", "ipc", "-i", ids[0], "call", "foamy.monitor", "status"],
-        env=run.env,
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
+    sockets = harness.wait_for(lambda: sorted(by_id.glob("*/ipc.sock")), 10)
+    return sockets[0].parent.name if sockets else None
+
+
+def ipc(run, ident, *args):
+    """stdout of `qs ipc -i <ident> <args>`, or None when it failed."""
+    result = subprocess.run(["qs", "ipc", "-i", ident, *args], env=run.env, capture_output=True, text=True, timeout=10)
     return result.stdout.strip() if result.returncode == 0 else None
+
+
+def ipc_targets(shown):
+    """{target: [function names]} from `qs ipc show`."""
+    targets, current = {}, None
+    for line in (shown or "").splitlines():
+        words = line.split()
+        if words[:1] == ["target"] and len(words) > 1:
+            current = words[1]
+            targets.setdefault(current, [])
+        elif words[:1] == ["function"] and current is not None and len(words) > 1:
+            targets[current].append(words[1].split("(", 1)[0])
+    return targets
+
+
+def ipc_failures(run):
+    """What is wrong with the leader's IPC, asked while the scene runs. Every
+    call is read-only or refused before it changes anything."""
+    ident = instance(run)
+    if ident is None:
+        return ["no qs IPC instance"]
+    failures = []
+    shown = ipc(run, ident, "show")
+    targets = ipc_targets(shown)
+    # Only the leader registers the target, so there is exactly one.
+    if sorted(targets.get("foamy.monitor", [])) != sorted(IPC_FUNCTIONS):
+        failures.append(f"IPC foamy.monitor functions: {shown!r}")
+    if shown is not None and shown.count("target foamy.monitor") != 1:
+        failures.append(f"IPC foamy.monitor is not registered exactly once: {shown!r}")
+    status = ipc(run, ident, "call", "foamy.monitor", "status")
+    try:
+        reply = json.loads(status or "")
+    except ValueError:
+        reply = None
+    if not isinstance(reply, dict):
+        failures.append(f"IPC status is no JSON object: {status!r}")
+    else:
+        for key, want in (("leader", True), ("members", 3), ("focusedMonitor", "eDP-1")):
+            if reply.get(key) != want:
+                failures.append(f"IPC status {key}: {reply.get(key)!r}, expected {want!r}")
+        if len(reply.get("displays") or []) != 3:
+            failures.append(f"IPC status displays: {reply.get('displays')!r}, expected 3")
+    junk = ipc(run, ident, "call", "foamy.monitor", "brightness", "abc")
+    if junk != "error: expected a percentage such as 40, +5 or -5":
+        failures.append(f"IPC brightness abc: {junk!r}")
+    return failures
+
+
+def calls_failures(lines):
+    """What the fakes' calls say is wrong (lines of $FOAMY_CALLS)."""
+    failures = []
+    # The cast picked in the scene: the first receiver after the TTL rescan
+    # (Den), on panel(1)'s selected display, which is the focused eDP-1; the
+    # rest is MonitorService.connectWirelessPeer's fixed stream settings.
+    cast = "\t".join(
+        ["fluxcast", "--protocol", "wfd", "--wfd-peer", "0A:0B:0C:0D:0E:0F", "--monitor", "eDP-1"]
+        + ["--output-res", "1920x1080", "--fps", "30", "--bitrate", "4M", "--wfd-timeout", "8"]
+    )
+    at = next((i for i, line in enumerate(lines) if line.startswith("fluxcast\t") and "--wfd-peer" in line), None)
+    if at is None or lines[at] != cast:
+        failures.append(f"the cast's FluxCast command: {lines[at] if at is not None else None!r}")
+    else:
+        # The refresh it interrupted was stopped (SIGINT) before the cast began.
+        before = [line for line in lines[:at] if line.startswith(("fluxcast\t", "fluxcast-signal\t"))]
+        if not before or before[-1] != "fluxcast-signal\t2":
+            failures.append(f"the cast began before the scan stopped: {before[-1:]}")
+    # The Advanced text size reaches its script with the chosen value.
+    if "omarchy-display-text-size\t12" not in lines:
+        failures.append("no call of omarchy-display-text-size with 12")
+    if "fluxcast-ignored\t2" not in lines:
+        failures.append("the stubborn scan's first stop did not meet a FluxCast that ignored it")
+    if "teardown-start" not in lines:
+        failures.append("the scene never reached the teardown")
+    elif not any(line.startswith("fluxcast-signal\t") for line in lines[lines.index("teardown-start") + 1 :]):
+        failures.append("the teardown did not stop the running cast")
+    return failures
 
 
 def overlaps(path):
@@ -84,7 +173,7 @@ def run(host, lang):
     )
     r.start()
     try:
-        status = ipc_status(r)
+        ipc_problems = ipc_failures(r)
         r.wait(timeout=240)
     finally:
         r.stop()
@@ -95,17 +184,11 @@ def run(host, lang):
     failures = [
         line for line in log.splitlines() if "FOAMY FAIL" in line or any(m in line for m in harness.FAILURE_MARKERS)
     ]
-    try:
-        leader = status is not None and json.loads(status).get("leader") is True
-    except ValueError:
-        leader = False
+    failures += ipc_problems
     depth, jobs = overlaps(Path(str(calls) + ".ddc"))
-    text = calls.read_text() if calls.exists() else ""
-    stopped = "fluxcast-signal" in text
     if depth != 1:
         failures.append(f"brightness jobs overlapped (max {depth} at once, {jobs} jobs)")
-    if not stopped:
-        failures.append("FluxCast was not signalled by the teardown")
+    failures += calls_failures(calls.read_text().splitlines() if calls.exists() else [])
     failures += [f"ran a host command: {line}" for line in r.host_commands()]
     # The hung brightness command (fakebin ddchang) ran, and nothing of it is left.
     hang_pid = Path(str(calls) + ".ddchang.pid")
@@ -113,11 +196,8 @@ def run(host, lang):
         failures.append("the hung brightness command never ran")
     elif Path("/proc", hang_pid.read_text().strip()).exists():
         failures.append("the hung brightness command outlived its deadline")
-    ok = "FOAMY DONE" in log and not failures and leader
-    print(
-        f"{'PASS' if ok else 'FAIL'} runtime {host} {lang}: {result}; ipc status from leader: {leader}; "
-        f"{jobs} brightness jobs, max {depth} at once; FluxCast stopped: {stopped}"
-    )
+    ok = "FOAMY DONE" in log and not failures
+    print(f"{'PASS' if ok else 'FAIL'} runtime {host} {lang}: {result}; {jobs} brightness jobs, max {depth} at once")
     if not ok:
         print("\n".join("    " + line for line in (failures or log.splitlines()[-40:])))
         print(f"    log kept at {r.base}")
