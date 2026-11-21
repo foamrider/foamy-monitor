@@ -5,8 +5,9 @@ Loads Panel.qml N times (one per simulated monitor, as 4.5 does) in an
 isolated offscreen Quickshell with the foamy-kit harness (temp HOME/XDG,
 no Wayland/Hyprland variables) and fake hyprctl/brightness/gsettings on a
 PATH that holds nothing else from Omarchy. After a warm-up it counts the
-processes started and the CPU used by the shell and its children while every
-popup stays closed.
+calls of the fake commands (hyprctl, brightness, gsettings, text size,
+FluxCast, and bash, which starts every helper run) and the CPU used by the
+shell and its children while every popup stays closed.
 
   tests/runtime-idle.py [--plugin DIR] [--instances 3] [--seconds 30]
                         [--max-idle-spawns N]
@@ -14,8 +15,8 @@ popup stays closed.
 The host is Omarchy 4.5: FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else
 the installed /usr/share/omarchy/shell.
 
-Exits 1 when more than --max-idle-spawns processes start in the idle window
-(the regression check; default 0).
+Exits 1 when more than --max-idle-spawns calls happen in the idle window
+(the regression check; default 0), or on a QML error or a host command.
 """
 
 import argparse
@@ -93,6 +94,16 @@ def calls(path):
     return path.read_text().splitlines() if path.exists() else []
 
 
+def kind(line):
+    """A short name for one logged call: a helper run (bash starts every one)
+    by its action, any other call by its command and first argument."""
+    parts = line.split("\t")
+    if parts[0] == "bash" and "foamy-monitor-helper" in parts:
+        action = parts[parts.index("foamy-monitor-helper") + 1 :]
+        return "helper " + (action[0] if action else "")
+    return " ".join(parts[:2])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--plugin", default=str(HERE.parent))
@@ -145,19 +156,11 @@ def main():
         used = end_cpu - start_cpu
         startup = calls(log)[:start_calls]
         print(f"plugin {plugin} host 4.5, {args.instances} instances, idle window {args.seconds:.0f} s")
-        print(
-            f"startup calls: {len(startup)}  ({', '.join(sorted(set(c.split(chr(9))[0] + ' ' + (c.split(chr(9))[2] if len(c.split(chr(9))) > 2 and c.startswith('python3') else '') for c in startup)))})"
-        )
+        print(f"startup calls: {len(startup)}  ({', '.join(sorted({kind(c) for c in startup}))})")
         print(f"idle calls: {len(window)}  idle CPU: {used:.2f} s = {100 * used / args.seconds:.2f} % of one core")
         kinds = {}
         for line in window:
-            parts = line.split("\t")
-            key = parts[0] + (
-                " " + Path(parts[1].split()[0]).name + " " + " ".join(parts[1].split()[1:2])
-                if parts[0] == "python3"
-                else ""
-            )
-            kinds[key] = kinds.get(key, 0) + 1
+            kinds[kind(line)] = kinds.get(kind(line), 0) + 1
         for key, count in sorted(kinds.items()):
             print(f"  {count:5d}  {key}")
         brightness = [c for c in startup if c.startswith("omarchy-brightness-display")]
@@ -166,7 +169,7 @@ def main():
         failures = [
             line
             for line in (run.base / "qs.log").read_text().splitlines()
-            if "TypeError" in line or "ReferenceError" in line
+            if any(marker in line for marker in harness.FAILURE_MARKERS)
         ]
         failures += [f"ran a host command: {line}" for line in run.host_commands()]
         for line in failures[:10]:
@@ -175,7 +178,7 @@ def main():
             print(f"FAIL: {len(failures)} QML errors or host commands")
             return 1
         if spawned > args.max_idle_spawns:
-            print(f"FAIL: {spawned} processes started while idle (allowed {args.max_idle_spawns})")
+            print(f"FAIL: {spawned} calls while idle (allowed {args.max_idle_spawns})")
             return 1
         print("OK")
         return 0

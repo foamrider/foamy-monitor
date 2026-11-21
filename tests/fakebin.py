@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Shared fakes for the offscreen runtime tests: hyprctl, brightness, gsettings,
-the text-size script and FluxCast.
+the text-size script, FluxCast, ffmpeg and a logging bash.
 
 Each fake is a small script written into a temporary bin directory. They log
 every call to $FOAMY_CALLS and never touch the
@@ -134,6 +134,13 @@ if "--wfd-scan" in sys.argv and os.path.exists(peers):
     print(open(peers).read(), flush=True)
     sys.exit(0)
 time.sleep(30)
+""",
+        # Every helper run starts as `bash -c 'exec … foamy-monitor-helper'`
+        # (kit/FoamyNative.js), so this logs the runs that call no other fake
+        # (the helper's dependency check), tab-separated like the others.
+        "bash": """#!/bin/sh
+(IFS='\t'; printf 'bash\\t%s\\n' "$*") >> "${FOAMY_CALLS:-/dev/null}"
+exec /usr/bin/bash "$@"
 """,
         # The helper checks for ffmpeg before a cast; this keeps the machine's
         # own ffmpeg (or its absence) out of the runtime tests.
