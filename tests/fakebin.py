@@ -132,10 +132,6 @@ if "--wfd-scan" in sys.argv and os.path.exists(peers):
     sys.exit(0)
 time.sleep(30)
 """,
-        "python3": """#!/bin/sh
-printf 'python3\\t%s\\n' "$*" >> "$FOAMY_CALLS"
-exec /usr/bin/python3 "$@"
-""",
     }
     for name, body in scripts.items():
         path = directory / name

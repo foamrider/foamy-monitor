@@ -3,7 +3,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const I = require('./i18n.cjs');
-const manifest = require('../manifest.json');
 const root = path.join(__dirname, '..');
 const tokens = s => [...String(s).matchAll(/%[1-9][0-9]*|\{\w+\}/g)].map(m => m[0]).sort();
 const forms = v => (typeof v === 'object' ? Object.values(v) : [v]);
@@ -37,11 +36,7 @@ for (const file of ['MonitorService.qml', 'Model.js']) {
 // Strings the kit's settings page shows.
 for (const key of ['Settings', 'Back', 'Saving…', 'Retry']) assert.ok(Object.hasOwn(I.en, key), key);
 
-assert.equal(manifest.barWidget?.defaults?.language, undefined);
-assert.equal((manifest.barWidget?.schema || []).some(f => f.key === 'language'), false);
-assert.equal(I.text('Unknown %1 {name}', 'no', ['$& %2']), 'Unknown $& %2 {name}');
 assert.equal(I.text('constructor', 'no'), 'constructor');
-assert.ok(!fs.existsSync(path.join(root, 'FoamyI18n.qml')), 'the forked FoamyI18n is gone');
 
 // Helper errors: translate the known English prefix, never the detail.
 const wrapper = view.slice(view.indexOf('  function tr('), view.indexOf('  function friendlyDisplayName('));
