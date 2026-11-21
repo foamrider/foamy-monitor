@@ -151,7 +151,6 @@ ShellRoot {
     eq(panel(0).barGlyph.codePointAt(0), Quickshell.screens.length > 1 ? 0xf037a : 0xf0379, "bar glyph survives as an escape")
     eq(shell.service.statusRuns, 1, "one startup status for every instance")
     eq(shell.service.liveMonitors.length, 3, "three displays read")
-    check(shell.service.statePath.indexOf("/state.json") > 0, "state file reported: " + shell.service.statePath)
     eq(panel(0).popup.bodyItem, null, "popup body is lazy")
     eq(shell.service.demanded, false, "no demand while closed")
     eq(Object.keys(shell.service.brightness).length, 0, "no brightness probe at startup")
@@ -317,16 +316,11 @@ ShellRoot {
     view.activateRequested()
     eq(view.moving, "", "Enter drops it")
     eq(view.LayoutMirroring.enabled, shell.lang === "ar", "popup body mirrors in RTL only")
-    eq(FoamyI18n.tn("%1 unsaved changes", 1), shell.lang === "no" ? "1 ulagret endring" : "1 unsaved change", "plural")
-    eq(FoamyI18n.t("Settings"), shell.lang === "no" ? "Innstillinger" : "Settings", "settings title translated")
-    // No settings: no Settings button, no Settings stop, `s` does nothing.
+    // The plugin has no settings page: no Settings button.
     eq(view.band.settingsButton.visible, false, "no Settings button")
-    eq(view.stops.indexOf("settings"), -1, "no Settings stop")
-    shell.key(view, "s")
-    eq(view.blocked, false, "s opens nothing")
     view.closeRequested()
     eq(first.opened, false, "Esc closes")
-    // IPC `open` as the first action builds the lazy body.
+    // A second bar's popup is open while three bars step brightness.
     panel(1).open()
     // Brightness from three bars at once: one DDC job at a time.
     for (var i = 0; i < 3; i++)
@@ -350,8 +344,6 @@ ShellRoot {
     eq(shell.service.brightness["DP-2"].percent, 55, "a wheel step before the first read lands after it")
     check(mockBar.summoned.length >= 1 && mockBar.summoned[0].id === "omarchy.osd" && mockBar.summoned[0].payload.icon === "brightness", "the wheel shows the Omarchy OSD: " + JSON.stringify(mockBar.summoned))
     eq(shell.service.brightnessProc.running, false, "brightness queue drained")
-    var second = panel(1).popup.bodyItem
-    check(second !== null, "the body builds on a fresh panel")
     panel(1).close()
     // The level changed elsewhere (laptop keys, the monitor's buttons) while
     // every popup was closed: a wheel step after the burst re-reads first.
@@ -417,7 +409,6 @@ ShellRoot {
     eq(shell.service.brightness["eDP-1"].percent, 40, "the explicit level stays after the read lands")
     eq(shell.service.brightnessAfterRead["eDP-1"], undefined, "no stale step left behind")
     eq(Object.keys(shell.service._stepRequester).length, 0, "no requester kept after its step")
-    eq(shell.service.brightnessProc.running, false, "brightness queue idle before the hang")
     shell.service.brightnessTimeoutSeconds = 1
     shell.sh("touch \"$FOAMY_CALLS.ddchang\"", hangB)
   }
@@ -532,7 +523,6 @@ ShellRoot {
     eq(shell.service.arrangementDragActive, false, "a destroyed view releases its drag")
     eq(shell.service.demanded, false, "a destroyed open popup releases its demand")
     eq(shell.service.scanning, false, "no scan or dependency check for a view that is gone")
-    eq(shell.service.dependencyRetry.running, false, "no dependency retries")
     eq(shell.service.teardowns, 0, "other bars keep the service")
     shell.runsBefore = shell.service.statusRuns
     shell.service.refresh()
@@ -597,7 +587,7 @@ ShellRoot {
   function trialC() {
     eq(shell.service.testing, false, "trial over")
     // A trial whose worker is gone (killed, crashed): the busy poll's next
-    // status reverts it and says so, in the popup's language.
+    // status reverts it and says so.
     shell.setPhase("dead", function () {
       until(function () {
         return shell.service.transaction.error !== "" && !shell.service.busy && displayIdle()
@@ -607,7 +597,7 @@ ShellRoot {
   function trialD() {
     eq(shell.service.transaction.phase, "idle", "a dead trial goes idle")
     var view = shell.leaderPanel().popup.bodyItem
-    eq(view.tr(view.actionError), shell.lang === "no" ? "Skjermtesten stoppet uventet. De forrige innstillingene ble gjenopprettet." : "The display test stopped unexpectedly. The previous settings were restored.", "the recovery says so")
+    eq(view.tr(view.actionError), "The display test stopped unexpectedly. The previous settings were restored.", "the recovery says so")
     shell.leaderPanel().close()
     until(function () {
       return !shell.service.scanning

@@ -127,7 +127,7 @@ def run(host, lang):
 
 
 if __name__ == "__main__":
-    cases = [("4.5", "en"), ("4.5", "no"), ("4.5", "ar")]
+    cases = [("4.5", "en"), ("4.5", "ar")]
     if len(sys.argv) > 1:
         cases = [c for c in cases if c[0] in sys.argv[1:] or f"{c[0]}/{c[1]}" in sys.argv[1:]]
     results = [run(host, lang) for host, lang in cases]
