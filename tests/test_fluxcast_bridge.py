@@ -75,8 +75,8 @@ def helper():
 
 # FAKE_MODE: "print" (write FAKE_OUTPUT, exit FAKE_EXIT), "hold" (write it,
 # then run until SIGINT or SIGTERM) or "stubborn" (like hold, but only a
-# SIGTERM ends it; it also starts a child in its process group that logs the
-# SIGTERM it gets).
+# SIGTERM ends it; it also starts a child in its process group that logs
+# "grandchild-ready" once its handler is in place, then the SIGTERM it gets).
 FAKE_FLUXCAST = r"""
 import os, signal, subprocess, sys, time
 log = os.environ["FAKE_LOG"]
@@ -97,7 +97,9 @@ signal.signal(signal.SIGTERM, on_signal)
 if mode == "stubborn":
     subprocess.Popen([sys.executable, "-I", "-c", "import signal, sys, time\n"
         "def stop(*_):\n with open(sys.argv[1], 'a') as s: s.write('grandchild\\tterm\\n')\n sys.exit(0)\n"
-        "signal.signal(signal.SIGTERM, stop)\nwhile True: time.sleep(0.05)\n", log])
+        "signal.signal(signal.SIGTERM, stop)\n"
+        "with open(sys.argv[1], 'a') as s: s.write('grandchild-ready\\n')\n"
+        "while True: time.sleep(0.05)\n", log])
 output = os.environ.get("FAKE_OUTPUT")
 if output:
     sys.stdout.write(open(output, encoding="utf-8").read())
@@ -519,6 +521,8 @@ class Bridge(unittest.TestCase):
     def test_stop_uses_fluxcast_cleanup_signal_before_escalating(self):
         bridge = self.start("cast", "--peer", "AA:BB:CC:DD:EE:FF", "--monitor", "DP-1", FAKE_MODE="stubborn")
         self.wait_for("ready")
+        # A SIGTERM before the child's handler would end it without its line.
+        self.wait_for("grandchild-ready")
         bridge.send_signal(signal.SIGTERM)
         self.wait_for("signal")
         self.assertEqual(self.lines("signal"), [["signal", str(int(signal.SIGINT))]])
