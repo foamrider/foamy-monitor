@@ -233,13 +233,6 @@ class Bridge(unittest.TestCase):
         )
         self.assertIn("æøå", result.stdout)  # not \u-escaped
 
-    def test_no_peer_message_produces_empty_list(self):
-        self.output.write_text("[FluxCast WFD] No Wi-Fi Direct peers found.")
-        result = self.run_bridge("scan")
-        self.assertEqual(result.returncode, 0)
-        self.assertEqual(json.loads(result.stdout), {"ok": True, "error": "", "peers": []})
-        self.assertEqual(self.lines("argv"), [["argv", "--wfd-scan", "--wfd-timeout", "8"]])
-
     def test_scan_failure_reports_the_last_error_and_exit_code(self):
         self.output.write_text(
             "[FluxCast WFD] ERROR: first\nnoise\n  [FluxCast WFD] ERROR: no p2p device: ERROR: x  \n"

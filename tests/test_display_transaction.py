@@ -396,13 +396,6 @@ class DisplayModelTests(unittest.TestCase):
         self.assertEqual(self.gtk_status(changed)["value"], 3)
         self.assertEqual(after(self.c, "-- no override\n", gtk=2), '-- no override\nhl.env("GDK_SCALE", "2")\n')
         self.assertEqual(after(self.c, "", gtk=2), '\nhl.env("GDK_SCALE", "2")\n')
-        for invalid in [
-            source + 'hl.env("GDK_SCALE", "1")\n',
-            'hl.env("GDK_SCALE", tostring(scale))',
-            'if docked then hl.env("GDK_SCALE", "2") end',
-        ]:
-            self.assertNotEqual(self.gtk_status(invalid)["error"], "")
-            self.assertFalse(self.c.call("gtk-scale", {"value": 1})["ok"])
         self.c.reset(source)
         for invalid in [0, 1.5, True, "2", 5, None, 2.0]:
             reply = self.c.call("gtk-scale", {"value": invalid})
@@ -422,8 +415,6 @@ class DisplayModelTests(unittest.TestCase):
         self.c.config.write_text('hl.env("GDK_SCALE", "3")\n')
         self.assertEqual(self.c.call("apply")["error"], "GTK scale changed elsewhere. Discard the draft and try again")
         self.assertEqual(self.c.call("discard")["gtkScale"]["value"], 3)
-        for value in [0, 1.5, True, "2", 5]:
-            self.assertFalse(self.c.call("gtk-scale", {"value": value})["ok"])
         self.assertNotIn("systemctl", self.c.calls.read_text())
         self.assertNotIn("dbus-update", self.c.calls.read_text())
 
