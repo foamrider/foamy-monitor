@@ -60,6 +60,9 @@ if args[:1] == ["monitors"]:
     snapshot = open(os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "monitors.json")).read()
     delay = os.environ["FOAMY_CALLS"] + ".hyprdelay"
     if os.path.exists(delay):
+        # The line tells a waiting test that the snapshot is taken.
+        with open(os.environ["FOAMY_CALLS"], "a") as log:
+            log.write("hyprctl-read\\n")
         time.sleep(float(open(delay).read() or 0))
     print(snapshot)
 elif args[:1] == ["configerrors"]:

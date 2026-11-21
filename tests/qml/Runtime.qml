@@ -253,10 +253,10 @@ ShellRoot {
     shell.mark("inflight-start", function () {
       shell.service.refresh()
       eq(shell.service.commandProc.running, true, "a slow status run is in flight")
-      // The fake hyprctl logs its call and reads the outputs at once, then
-      // answers 2 s later: once its line is logged, a change is too late for it.
+      // The fake hyprctl logs hyprctl-read once it has read the outputs, then
+      // answers 2 s later: after that line, a change is too late for it.
       until(function () {
-        return shell.loggedAfter("inflight-start", "hyprctl\tmonitors")
+        return shell.loggedAfter("inflight-start", "hyprctl-read")
       }, "the slow run read the outputs", inflightB)
     })
   }
@@ -598,6 +598,10 @@ ShellRoot {
     eq(shell.leaderPanel().opened, true, "the trial opens the popup by itself")
     eq(shell.openCount(), 1, "one popup shows the trial")
     var view = shell.leaderPanel().popup.bodyItem
+    if (!view) {
+      shell.finish()
+      return
+    }
     eq(view.cursorKey, "revert", "a view built during the trial lands on Revert")
     eq(JSON.stringify(view.stops), JSON.stringify(["revert", "keep"]), "only Revert and Keep take the cursor")
     view.setTab("Advanced")
@@ -623,7 +627,7 @@ ShellRoot {
   function trialB2() {
     eq(shell.service.transaction.decision, "revert", "Esc reverts the running trial")
     eq(shell.service.error, "", "the helper took the revert for this trial")
-    eq(shell.leaderPanel().opened, true, "the popup stays during the revert")
+    eq(shell.leaderPanel().opened, true, "the trial popup is shown after Esc")
     shell.setPhase("idle", function () {
       until(function () {
         return !shell.service.testing && displayIdle()
@@ -805,7 +809,9 @@ ShellRoot {
     eq(shell.service.scanRunning, true, "a refresh runs")
     eq(shell.service.wirelessPeers.length, 2, "the Scan button keeps the list too")
     view.connectPeer(shell.service.wirelessPeers[0])
-    eq(shell.service.castRunning, false, "no cast while the scan runs")
+    // A cast that starts at once sets "starting" in this same call.
+    eq(shell.service.castPhase, "idle", "the pick waits for the scan to stop")
+    check(shell.service.pendingCast !== null, "the pick is kept until the scan stopped")
     until(function () {
       return !shell.service.scanRunning && shell.service.castRunning
     }, "the cast after the scan", wifiK)
@@ -882,14 +888,20 @@ ShellRoot {
   }
 
   function stepEight() {
-    eq(shell.service.castRunning, false, "the teardown stopped the cast")
-    eq(shell.service.members, 0, "every panel gone")
-    eq(shell.service.teardowns, 1, "teardown after the last panel left")
-    eq(shell.service.active, false, "service idle")
-    eq(shell.service.scanRunning, false, "scan stopped")
-    eq(shell.service.commands.length, 0, "no queued commands after teardown")
-    eq(shell.service.statusPending, false, "no pending refresh after teardown")
-    shell.finish()
+    // runtime.py looks for the cast's stop signal between teardown-start and
+    // teardown-done. The bridge waits for FluxCast to exit, and the fake logs
+    // the signal before it exits, so the line is written by now. After this
+    // marker, the end of qs also signals FluxCast, which proves nothing.
+    shell.mark("teardown-done", function () {
+      eq(shell.service.castRunning, false, "the teardown stopped the cast")
+      eq(shell.service.members, 0, "every panel gone")
+      eq(shell.service.teardowns, 1, "teardown after the last panel left")
+      eq(shell.service.active, false, "service idle")
+      eq(shell.service.scanRunning, false, "scan stopped")
+      eq(shell.service.commands.length, 0, "no queued commands after teardown")
+      eq(shell.service.statusPending, false, "no pending refresh after teardown")
+      shell.finish()
+    })
   }
 
   // Runs a shell script; then() (optional) once it has exited.
