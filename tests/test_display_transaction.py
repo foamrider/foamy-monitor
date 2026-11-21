@@ -28,6 +28,31 @@ import unittest
 PLUGIN = Path(__file__).resolve().parents[1]
 ACTIVE = ("applying", "testing", "saving", "reverting")
 
+# MonitorView's tr() shows a helper message in the user's language when the
+# message is a key of the English catalog, or when it fills one of these
+# templates (the list in MonitorView.qml `function tr`). A message renamed on
+# one side only would show in English under every other language.
+CATALOG = json.loads((PLUGIN / "i18n/en.json").read_text(encoding="utf-8"))
+TEMPLATES = (
+    "Please install %1",
+    "Could not read display settings: %1",
+    "Unsupported scale for %1",
+    "Unsupported resolution or refresh rate for %1",
+    "Cast ended (%1)",
+)
+
+
+def translated(message):
+    """The message itself, when tr() finds a catalog entry for it."""
+    if message in CATALOG:
+        return message
+    for template in TEMPLATES:
+        head, tail = template.split("%1")
+        filled = len(message) > len(head) + len(tail) and message.startswith(head) and message.endswith(tail)
+        if template in CATALOG and filled:
+            return message
+    raise AssertionError(f"{message!r} is no key of i18n/en.json and fills no template of tr()")
+
 
 def helper():
     if os.environ.get("FOAMY_HELPER"):
@@ -77,6 +102,9 @@ import json, os, re, sys
 from pathlib import Path
 with open(os.environ['TEST_CALLS'], 'a') as log:
     log.write('\t'.join(['hyprctl'] + sys.argv[1:]) + '\n')
+if os.environ.get('TEST_HYPRCTL_EXIT'):
+    sys.stderr.write(os.environ.get('TEST_HYPRCTL_STDERR', ''))
+    sys.exit(int(os.environ['TEST_HYPRCTL_EXIT']))
 path=Path(os.environ['TEST_DISPLAYS'])
 rows=json.loads(path.read_text())
 args=sys.argv[1:]
@@ -85,6 +113,8 @@ if args[0]=='monitors': print(rows if isinstance(rows, str) else json.dumps(rows
 elif args[0]=='configerrors': print(errors.read_text() if errors.exists() else os.environ.get('TEST_CONFIG_ERRORS', ''))
 elif args[0]=='eval' and os.environ.get('TEST_EVAL_ERROR'):
     print('error: rejected by the test compositor')
+elif args[0]=='eval' and os.environ.get('TEST_EVAL_IGNORE'):
+    print('ok')  # accepts the rules and changes nothing
 elif args[0] in ('eval','reload'):
     if args[0]=='eval': source=args[1]
     else: source=(Path(os.environ['XDG_CONFIG_HOME'])/'hypr/monitors.lua').read_text()
@@ -201,6 +231,9 @@ class Compositor:
             helper() + [action, *args], input=text, text=True, capture_output=True, env=env, timeout=15, **popen
         )
 
+    def run_bytes(self, action, data):
+        return subprocess.run(helper() + [action], input=data, capture_output=True, env=self.env, timeout=15)
+
     def call(self, action, request=None, extra=None):
         result = self.run(action, request, extra)
         try:
@@ -308,7 +341,7 @@ class DisplayModelTests(unittest.TestCase):
                 self.assertEqual(self.gtk_status(changed)["value"], 1)
                 # The same value again is no change at all.
                 self.assertTrue(self.c.call("gtk-scale", {"value": 1})["ok"])
-                self.assertEqual(self.c.call("apply")["error"], "No unsaved changes")
+                self.assertEqual(self.c.call("apply")["error"], translated("No unsaved changes"))
 
     def test_gtk_scale_rejects_dynamic_or_shared_locals(self):
         for source in [
@@ -351,6 +384,10 @@ class DisplayModelTests(unittest.TestCase):
                 "GTK scale must be a whole-number string or tostring of a local whole number in monitors.lua",
             ),
             (
+                'hl.env("GDK_SCALE", "99999999999999999999999")',
+                "GTK scale must be a whole-number string or tostring of a local whole number in monitors.lua",
+            ),
+            (
                 "local tostring = custom\n" + OMARCHY_CONFIG,
                 "GTK scale requires the unmodified tostring function in monitors.lua",
             ),
@@ -377,13 +414,10 @@ class DisplayModelTests(unittest.TestCase):
         self.assertTrue(self.c.call("patch", {"id": ident, "changes": {"scale": 1.25}})["ok"])
         self.assertTrue(self.c.call("apply")["ok"])
         state = self.c.wait_phase("testing")["state"]
-        reply = self.c.call("gtk-scale", {"value": 2})
-        self.assertFalse(reply["ok"])
-        self.assertIn("test is already running", reply["error"])
+        running = translated("A display test is already running")
+        self.assertEqual(self.c.call("gtk-scale", {"value": 2})["error"], running)
         for action in ("patch", "discard", "apply"):
-            self.assertEqual(
-                self.c.call(action, {"id": ident, "changes": {"x": 5}})["error"], "A display test is already running"
-            )
+            self.assertEqual(self.c.call(action, {"id": ident, "changes": {"x": 5}})["error"], running)
         self.assertEqual(json.loads(self.c.gtk_environment.read_text())["systemd"], "1")
         self.assertTrue(self.c.call("revert", {"token": state["token"]})["ok"])
         self.c.wait_phase("idle")
@@ -413,7 +447,9 @@ class DisplayModelTests(unittest.TestCase):
         self.assertEqual(sorted(set(calls)), ["hyprctl\tmonitors\tall\t-j"])
         # External changes must not silently replace a pending value.
         self.c.config.write_text('hl.env("GDK_SCALE", "3")\n')
-        self.assertEqual(self.c.call("apply")["error"], "GTK scale changed elsewhere. Discard the draft and try again")
+        self.assertEqual(
+            self.c.call("apply")["error"], translated("GTK scale changed elsewhere. Discard the draft and try again")
+        )
         self.assertEqual(self.c.call("discard")["gtkScale"]["value"], 3)
         self.assertNotIn("systemctl", self.c.calls.read_text())
         self.assertNotIn("dbus-update", self.c.calls.read_text())
@@ -425,6 +461,24 @@ class DisplayModelTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertIsNone(result["gtkScale"]["base"])
         self.assertEqual(result["gtkScale"]["error"], f"[Errno 2] No such file or directory: '{self.c.config}'")
+
+    def test_non_utf8_config_is_refused_and_left_alone(self):
+        # A lossy decode would let a later Keep write U+FFFD over the user's byte.
+        self.c.reset("")
+        original = b'hl.monitor({ output = "DP-1", scale = 1 })\n-- caf\xe9\n'
+        self.c.config.write_bytes(original)
+        status = self.c.call("status")
+        self.assertTrue(status["ok"])
+        self.assertIsNone(status["gtkScale"]["base"])
+        self.assertTrue(status["gtkScale"]["error"])
+        ident = status["state"]["draft"][0]["id"]
+        self.assertTrue(self.c.call("patch", {"id": ident, "changes": {"x": 5}})["ok"])
+        reply = self.c.call("apply")
+        self.assertFalse(reply["ok"])
+        self.assertTrue(reply["error"])
+        self.assertEqual(self.c.call("status")["state"]["phase"], "idle")
+        self.assertEqual(self.c.config.read_bytes(), original)
+        self.assertNotIn("hyprctl\teval", self.c.calls.read_text())
 
     def test_status_reply_and_live_rows(self):
         rows = [
@@ -456,36 +510,34 @@ class DisplayModelTests(unittest.TestCase):
         self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
         external, panel = result["live"]
         self.assertEqual(external["id"], "desc:Test DP-1")
-        self.assertEqual(external["selector"], "desc:Test DP-1")
         self.assertEqual(external["refreshRate"], 60.0)  # snapped to the closest advertised mode
         self.assertIs(external["connected"], True)
         self.assertEqual(external["mirrorOf"], "")
         self.assertEqual((panel["width"], panel["height"], panel["refreshRate"]), (2880, 1800, 120.0))
         self.assertEqual((panel["x"], panel["y"]), (0, 0))  # disabled outputs are clamped to 0
-        self.assertEqual(
-            set(external),
-            {
-                "name",
-                "make",
-                "model",
-                "serial",
-                "scale",
-                "transform",
-                "disabled",
-                "focused",
-                "availableModes",
-                "id",
-                "selector",
-                "description",
-                "width",
-                "height",
-                "refreshRate",
-                "connected",
-                "mirrorOf",
-                "x",
-                "y",
-            },
-        )
+        # The fields MonitorService, MonitorView, Panel, IdentifyOverlay and
+        # Model.js read from a display; the helper may add others.
+        required = {
+            "name",
+            "make",
+            "model",
+            "description",
+            "id",
+            "width",
+            "height",
+            "refreshRate",
+            "scale",
+            "transform",
+            "x",
+            "y",
+            "disabled",
+            "mirrorOf",
+            "availableModes",
+            "connected",
+            "focused",
+        }
+        for display in result["live"]:
+            self.assertLessEqual(required, set(display))
         state = result["state"]
         self.assertEqual(state["phase"], "idle")
         self.assertEqual(state["draft"], result["live"])
@@ -502,6 +554,22 @@ class DisplayModelTests(unittest.TestCase):
         other = self.c.call("status", extra={"HYPRLAND_INSTANCE_SIGNATURE": "another"})["statePath"]
         self.assertNotEqual(Path(other).parent, path.parent)
 
+    def test_corrupt_state_file_is_an_error_not_a_reset(self):
+        # A silent reset during a trial would forget the running worker and
+        # the snapshot a revert needs.
+        self.c.reset("")
+        path = Path(self.c.call("status")["statePath"])
+        for content in (b'{"phase": "testing"', b"[]", b"\xff"):
+            with self.subTest(content=content):
+                path.write_bytes(content)
+                for action, request in (("status", None), ("patch", {"id": "x", "changes": {}})):
+                    reply = self.c.call(action, request)
+                    self.assertFalse(reply["ok"], action)
+                    self.assertTrue(reply["error"], action)
+                    if content == b"[]":
+                        self.assertEqual(reply["error"], f"{path} does not hold a state object")
+                self.assertEqual(path.read_bytes(), content)
+
     def test_mirror_readback_resolves_hyprland_ids_to_connectors(self):
         rows = [monitor(id=1), monitor("eDP-1", id=0, mirrorOf="1"), monitor("HDMI-A-1", id=2, mirrorOf="none", x=1920)]
         self.c.reset("", rows)
@@ -509,12 +577,35 @@ class DisplayModelTests(unittest.TestCase):
         self.assertEqual([m["mirrorOf"] for m in actual], ["", "DP-1", ""])
 
     def test_no_displays_and_hyprctl_failures_are_errors(self):
-        self.c.reset("", [])
-        self.assertEqual(self.c.call("status")["error"], "No connected displays")
-        self.c.displays.write_text(json.dumps("not json"))
-        self.assertFalse(self.c.call("status")["ok"])
-        self.c.displays.write_text(json.dumps({"a": 1}))
-        self.assertEqual(self.c.call("status")["error"], "No connected displays")
+        self.c.reset("")
+        before = self.c.call("status")
+        no_x = {key: value for key, value in monitor().items() if key != "x"}
+        for name, displays, extra, message in [
+            ("no rows", [], None, translated("No connected displays")),
+            ("an object", {"a": 1}, None, translated("No connected displays")),
+            ("not JSON", "not json", None, None),  # the parser's wording is no contract
+            ("a row that is no object", "[1]", None, "hyprctl returned an invalid display"),
+            ("a row without x", [no_x], None, "A display entry lacks 'x'"),
+            (
+                "exit 3 with stderr",
+                [monitor()],
+                {"TEST_HYPRCTL_EXIT": "3", "TEST_HYPRCTL_STDERR": "compositor gone"},
+                "compositor gone",
+            ),
+            ("exit 3 without output", [monitor()], {"TEST_HYPRCTL_EXIT": "3"}, "hyprctl failed (3)"),
+            # Without the cap this parses as [] and reads "No connected displays".
+            ("9 MiB of output", "[" + " " * (9 << 20) + "]", None, "hyprctl printed more than 8 MiB"),
+        ]:
+            with self.subTest(name):
+                self.c.displays.write_text(json.dumps(displays))
+                reply = self.c.call("status", extra=extra)
+                self.assertFalse(reply["ok"])
+                if message is None:
+                    self.assertTrue(reply["error"])
+                else:
+                    self.assertEqual(reply["error"], message)
+        # A failed status writes nothing.
+        self.assertEqual(self.c.state_file(before)["revision"], before["state"]["revision"])
 
     def test_config_preserves_fallback_custom_fields_comments_and_environment(self):
         source = """-- hl.monitor({ output = "DP-1", scale = 9 })
@@ -741,17 +832,20 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
         self.assertFalse(state["draft"][1]["connected"])
         self.assertFalse(state["base"][1]["connected"])
         self.assertEqual(state["draft"][1]["scale"], 1.25)
-        self.assertEqual(self.c.call("patch", {"id": ident, "changes": {"x": 1}})["error"], "Display is disconnected")
-        self.assertEqual(self.c.call("apply")["error"], "Displays changed. Discard the draft and try again")
+        self.assertEqual(
+            self.c.call("patch", {"id": ident, "changes": {"x": 1}})["error"], translated("Display is disconnected")
+        )
+        self.assertEqual(self.c.call("apply")["error"], translated("Displays changed. Discard the draft and try again"))
         # Discard drops the draft and the disconnected display with it.
         discarded = self.c.call("discard")
         self.assertEqual([m["name"] for m in discarded["state"]["draft"]], ["HDMI-A-1"])
 
     def test_patch_validation(self):
         self.c.reset("", [monitor(), monitor("eDP-1", x=1920)])
-        ident = self.c.call("status")["state"]["draft"][0]["id"]
+        before = self.c.call("status")
+        ident = before["state"]["draft"][0]["id"]
         for changes, message in [
-            ({"vrr": 1}, "Unknown display setting"),
+            ({"vrr": 1}, translated("Unknown display setting")),
             ({"x": 1.5}, "Invalid display setting: x"),
             ({"x": 100000}, "Invalid display setting: x"),
             ({"x": True}, "Invalid display setting: x"),
@@ -762,12 +856,22 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
             ({"disabled": 1}, "Invalid display setting: disabled"),
             ({"mirrorOf": "x" * 256}, "Invalid display setting: mirrorOf"),
             ({"mirrorOf": 1}, "Invalid display setting: mirrorOf"),
+            # One bad field refuses the whole patch, whichever comes first: the
+            # valid x or transform next to it is not applied (checked below).
+            ({"x": 5, "transform": 8}, "Invalid display setting: transform"),
+            ({"transform": 3, "x": 1.5}, "Invalid display setting: x"),
         ]:
             with self.subTest(changes=changes):
                 self.assertEqual(self.c.call("patch", {"id": ident, "changes": changes})["error"], message)
         for request in [[], {"id": ident}, {"id": ident, "changes": []}]:
-            self.assertEqual(self.c.call("patch", request)["error"], "Invalid display change")
-        self.assertEqual(self.c.call("patch", {"id": "nope", "changes": {}})["error"], "Display is disconnected")
+            self.assertEqual(self.c.call("patch", request)["error"], translated("Invalid display change"))
+        self.assertEqual(
+            self.c.call("patch", {"id": "nope", "changes": {}})["error"], translated("Display is disconnected")
+        )
+        # No refused patch changed the draft or wrote the state file.
+        self.assertEqual(self.c.state_file(before)["revision"], before["state"]["revision"])
+        draft = self.c.call("status")["state"]["draft"][0]
+        self.assertEqual((draft["x"], draft["transform"]), (0, 0))
         reply = self.c.call("patch", {"id": ident, "changes": {"x": -99999, "refreshRate": 59.94, "transform": 7}})
         self.assertTrue(reply["ok"])
         draft = reply["state"]["draft"][0]
@@ -777,14 +881,28 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
         other = self.c.call("status")["state"]["draft"][1]["id"]
         self.assertEqual(
             self.c.call("patch", {"id": other, "changes": {"disabled": True}})["error"],
-            "Keep at least one display enabled",
+            translated("Keep at least one display enabled"),
         )
         self.assertEqual(self.c.call("discard")["state"]["draft"][0]["x"], 0)
-        # Invalid JSON on standard input is an error reply.
-        for text in ("{nope\n", ""):
-            result = self.c.run("patch", stdin=text)
-            self.assertEqual(result.returncode, 1)
-            self.assertFalse(json.loads(result.stdout)["ok"])
+        # Invalid JSON or text that is not UTF-8 on standard input is an error reply.
+        for data in (b"{nope\n", b"", b"\xff\n"):
+            with self.subTest(stdin=data):
+                result = self.c.run_bytes("patch", data)
+                self.assertEqual(result.returncode, 1)
+                self.assertFalse(json.loads(result.stdout)["ok"])
+
+    def test_requests_over_1_mib_are_refused(self):
+        self.c.reset("", [monitor(), monitor("eDP-1", x=1920)])
+        before = self.c.call("status")
+        ident = before["state"]["draft"][0]["id"]
+        # A valid patch padded with a key the helper ignores: only the bound refuses it.
+        request = json.dumps({"id": ident, "changes": {"x": 5}, "pad": "x" * ((1 << 20) + 1024)}) + "\n"
+        result = self.c.run("patch", stdin=request)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(json.loads(result.stdout)["error"], "The request is longer than 1 MiB")
+        state = self.c.state_file(before)
+        self.assertEqual(state["draft"][0]["x"], before["state"]["draft"][0]["x"])
+        self.assertEqual(state["revision"], before["state"]["revision"])
 
     def test_invalid_modes_scales_overlap_and_last_display_are_rejected(self):
         live = [monitor(), monitor("eDP-1", True)]
@@ -798,36 +916,40 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
             with self.subTest(changes=changes):
                 reply, config = self.c.plan("", live, [("DP-1", changes)])
                 self.assertIsNone(config)
-                self.assertEqual(reply["error"], message)
+                self.assertEqual(reply["error"], translated(message))
+        overlap = translated("Displays overlap. Adjust their arrangement")
+        source = translated("Choose an enabled, non-mirrored source display")
         reply, _ = self.c.plan("", live, [("eDP-1", {"disabled": False})])
-        self.assertEqual(reply["error"], "Displays overlap. Adjust their arrangement")
+        self.assertEqual(reply["error"], overlap)
         reply, config = self.c.plan("", live, [("eDP-1", {"disabled": False, "x": 1920})])
         self.assertTrue(reply["ok"], reply)
         rotated = [monitor(), monitor("eDP-1", x=1080, transform=1)]
         reply, _ = self.c.plan("", rotated, [("DP-1", {"transform": 1})])
         self.assertTrue(reply["ok"], reply)
         reply, _ = self.c.plan("", rotated, [("DP-1", {"x": 1000})])
-        self.assertEqual(reply["error"], "Displays overlap. Adjust their arrangement")
+        self.assertEqual(reply["error"], overlap)
         reply, _ = self.c.plan("", [monitor(), monitor("eDP-1", x=1920)], [("eDP-1", {"mirrorOf": "HDMI-A-9"})])
-        self.assertEqual(reply["error"], "Choose an enabled, non-mirrored source display")
+        self.assertEqual(reply["error"], source)
         reply, _ = self.c.plan("", [monitor(), monitor("eDP-1", x=1920)], [("eDP-1", {"mirrorOf": "eDP-1"})])
-        self.assertEqual(reply["error"], "Choose an enabled, non-mirrored source display")
+        self.assertEqual(reply["error"], source)
         reply, _ = self.c.plan("", [monitor(), monitor("eDP-1", x=1920)], [("eDP-1", {"mirrorOf": "DP-1"})])
         self.assertTrue(reply["ok"], reply)
         self.c.reset("")
-        self.assertEqual(self.c.call("apply")["error"], "No unsaved changes")
+        self.assertEqual(self.c.call("apply")["error"], translated("No unsaved changes"))
 
     def test_apply_preconditions(self):
         self.c.reset("")
         ident = self.c.call("status")["state"]["draft"][0]["id"]
         self.c.call("patch", {"id": ident, "changes": {"x": 5}})
         reply = self.c.call("apply", extra={"TEST_CONFIG_ERRORS": "config error at line 3"})
-        self.assertEqual(reply["error"], "Fix Hyprland configuration errors before saving")
+        self.assertEqual(reply["error"], translated("Fix Hyprland configuration errors before saving"))
         target = self.c.directory / "dotfiles-monitors.lua"
         target.write_text("")
         self.c.config.unlink()
         self.c.config.symlink_to(target)
-        self.assertEqual(self.c.call("apply")["error"], "monitors.lua must be a machine-local file outside Stow")
+        self.assertEqual(
+            self.c.call("apply")["error"], translated("monitors.lua must be a machine-local file outside Stow")
+        )
         # A symlinked monitors.lua is still read for its GTK scale.
         self.assertEqual(self.c.call("status")["gtkScale"], {"base": 1, "value": 1, "error": ""})
         self.c.config.unlink()
@@ -841,13 +963,14 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
         self.assertEqual((state["draft"][0]["x"], state["base"][0]["x"]), (5, 0))
         self.assertEqual(state["draft"][0]["scale"], 2.0)
         self.assertEqual(
-            self.c.call("apply")["error"], "Display settings changed elsewhere. Discard the draft and try again"
+            self.c.call("apply")["error"],
+            translated("Display settings changed elsewhere. Discard the draft and try again"),
         )
 
     def test_keep_and_revert_need_the_running_trial(self):
         self.c.reset("")
         for action in ("keep", "revert"):
-            self.assertEqual(self.c.call(action, {"token": ""})["error"], "This display test has ended")
+            self.assertEqual(self.c.call(action, {"token": ""})["error"], translated("This display test has ended"))
 
     def test_usage_errors(self):
         self.c.reset("")
@@ -855,6 +978,8 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
             result = self.c.run(action, args=args)
             self.assertEqual(result.returncode, 2, (action, args))
             self.assertTrue(result.stderr)
+            # The service parses standard output as the reply.
+            self.assertEqual(result.stdout, "", (action, args))
 
     def test_worker_with_a_stale_token_leaves_the_state_alone(self):
         self.c.reset("")
@@ -873,7 +998,7 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
         rows = json.loads(self.c.displays.read_text())
         self.c.displays.write_text(json.dumps([r for r in rows if r["name"] == "eDP-1"]))
         state = self.c.wait_phase("idle")["state"]
-        self.assertEqual(state["error"], "A display was disconnected during the test")
+        self.assertEqual(state["error"], translated("A display was disconnected during the test"))
         restored = json.loads(self.c.displays.read_text())
         self.assertEqual(len(restored), 1)
         self.assertEqual(restored[0]["name"], "eDP-1")
@@ -935,6 +1060,28 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(saved["gtkEnvironmentBefore"], "1")
         self.assertIs(saved["monitorChanges"], True)
         return self.wait_phase("testing")
+
+    def test_rejected_or_ignored_settings_end_the_trial(self):
+        # The compositor refuses the rules, or accepts them and changes nothing:
+        # the trial ends at once with the reason, and nothing is saved.
+        # The compositor's own answer leads the error; the rollback may add to it.
+        for extra, expected, exact in [
+            ({"TEST_EVAL_ERROR": "1"}, "error: rejected by the test compositor", False),
+            ({"TEST_EVAL_IGNORE": "1"}, translated("The display did not accept these settings"), True),
+        ]:
+            with self.subTest(extra=extra):
+                self.c.reset(self.original)
+                ident = self.call("status")["state"]["draft"][0]["id"]
+                self.assertTrue(self.call("patch", {"id": ident, "changes": {"scale": 1.25}})["ok"])
+                self.assertTrue(self.call("apply", extra=extra)["ok"])
+                error = self.wait_phase("idle")["state"]["error"]
+                if exact:
+                    self.assertEqual(error, expected)
+                else:
+                    self.assertTrue(error.startswith(expected), error)
+                self.assertEqual(json.loads(self.displays.read_text())[0]["scale"], 1)
+                self.assertEqual(self.config.read_text(), self.original)
+                self.assertNotIn("hyprctl\treload", self.c.calls.read_text())
 
     def test_detached_timeout_restores_live_state_without_writing_config(self):
         state = self.start()["state"]
@@ -1013,7 +1160,7 @@ class WorkerIntegrationTests(unittest.TestCase):
     # crash) left the trial active for good: the displays stayed on the trial
     # settings and every edit answered "A display test is already running".
     # The next command now finds the worker gone and runs the revert itself.
-    RECOVERED = "The display test stopped unexpectedly. The previous settings were restored."
+    RECOVERED = translated("The display test stopped unexpectedly. The previous settings were restored.")
 
     def kill_worker(self, pid):
         os.kill(pid, signal.SIGKILL)
@@ -1233,7 +1380,7 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.config.write_text(changed)
         self.call("keep", {"token": self.token})
         result = self.wait_phase("idle")
-        self.assertEqual(result["state"]["error"], "monitors.lua changed during the test; try again")
+        self.assertEqual(result["state"]["error"], translated("monitors.lua changed during the test; try again"))
         self.assertEqual(self.config.read_text(), changed)
         self.assertEqual(json.loads(self.displays.read_text())[0]["scale"], 1)
 
