@@ -473,7 +473,9 @@ Singleton {
   function setCursorSize(value) {
     if (!active || advancedProc.running)
       return
-    advancedProc.command = advancedDeadline.concat(["bash", "-c", 'theme=$(gsettings get org.gnome.desktop.interface cursor-theme); theme=${theme//\'/}; gsettings set org.gnome.desktop.interface cursor-size "$1" && hyprctl setcursor "$theme" "$1"', "cursor-size", String(Number(value))])
+    // gsettings prints the theme in single quotes; bash gets ${theme//\'/},
+    // with the quote escaped, to drop them.
+    advancedProc.command = advancedDeadline.concat(["bash", "-c", 'theme=$(gsettings get org.gnome.desktop.interface cursor-theme); theme=${theme//\\\'/}; gsettings set org.gnome.desktop.interface cursor-size "$1" && hyprctl setcursor "$theme" "$1"', "cursor-size", String(Number(value))])
     advancedProc.running = true
   }
   function setTextSize(value) {

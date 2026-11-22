@@ -31,7 +31,6 @@ MonitorView.qml: block-scope-var-declaration: var declaration in block scope is 
 MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var monitor = transaction.draft.find(function (m) {
 MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var next = tabs[Math.max(0, Math.min(tabs.length - 1, tabs.indexOf(key.slice(4)) + dx))]
 MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var o = others[i]
-MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var off = offlineMonitors[stopIndex("offline:")]
 MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var parts = templates[i].split("%1")
 MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var templates = ["Please install %1", "Could not read display settings: %1", "Unsupported scale for %1", "Unsupported resolution or refresh rate for %1", "Cast 
 MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var whole = String(text)
