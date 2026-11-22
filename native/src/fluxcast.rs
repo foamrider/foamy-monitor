@@ -22,7 +22,8 @@ use crate::py;
 /// Exit status for "a package is missing" (127 before: helpers never exit
 /// 126 or 127, which mean "no helper for this CPU" to the shell).
 pub const MISSING: u8 = 69;
-/// The scan's output kept for parsing; more is read and dropped.
+/// The scan's output kept for parsing; more is read and dropped, and the
+/// scan then fails, so a cut peer list never looks complete.
 const SCAN_OUTPUT: usize = 4 << 20;
 /// A longer cast log line is cut here (the rest of the line is dropped).
 const LINE_LIMIT: usize = 64 << 10;
@@ -362,7 +363,7 @@ fn start_error(error: &io::Error) -> String {
 /// detected" line.
 pub fn parse_scan_output(output: &str) -> Vec<Value> {
     let mut peers: Vec<Value> = Vec::new();
-    for raw in py::splitlines(output) {
+    for raw in py::text_lines(output) {
         let line = py::rstrip(raw);
         if let Some((index, address, tail)) = peer_line(line) {
             let tail = py::strip(tail);
@@ -435,18 +436,18 @@ pub fn phase_for_line(line: &str) -> Option<(&'static str, String)> {
     if line.contains("PLAY accepted; media stream started") {
         return Some(("casting", "Desktop and audio are being shared".into()));
     }
-    if line.contains(" ERROR:") || line.starts_with("ERROR:") {
-        let detail = py::strip(line.rsplit_once("ERROR:").map_or(line, |(_, after)| after));
-        return Some((
-            "error",
-            if detail.is_empty() {
-                "FluxCast failed".into()
-            } else {
-                detail.into()
-            },
-        ));
-    }
-    None
+    error_detail(line).map(|detail| ("error", detail.to_owned()))
+}
+
+/// The reason a FluxCast "ERROR:" log line gives: the text after its first
+/// marker (at the start of the line or after a space), possibly empty. A
+/// scan and a cast read the same line the same way.
+fn error_detail(line: &str) -> Option<&str> {
+    let after = match line.strip_prefix("ERROR:") {
+        Some(after) => after,
+        None => line.split_once(" ERROR:")?.1,
+    };
+    Some(py::strip(after))
 }
 
 pub fn scan(args: &ScanArgs, mut stops: PipeReader) -> u8 {
@@ -478,8 +479,10 @@ pub fn scan(args: &ScanArgs, mut stops: PipeReader) -> u8 {
         }
     };
     let mut text = Vec::new();
+    let mut overflow = false;
     pump(&child, output, &mut stops, &mut stopper, |chunk| {
         let room = SCAN_OUTPUT.saturating_sub(text.len());
+        overflow |= chunk.len() > room;
         text.extend_from_slice(&chunk[..chunk.len().min(room)]);
     });
     let code = match reap(child, &mut stops, &mut stopper) {
@@ -496,16 +499,17 @@ pub fn scan(args: &ScanArgs, mut stops: PipeReader) -> u8 {
         return 130;
     }
     if code != 0 {
-        let message = py::splitlines(&output)
-            .into_iter()
-            .map(py::strip)
-            .rfind(|line| line.contains("ERROR:"))
-            .map(|line| {
-                py::strip(line.split_once("ERROR:").map_or(line, |(_, after)| after)).to_owned()
-            })
-            .unwrap_or_else(|| "Wireless display scan failed".into());
+        // A bare "ERROR:" line gives no reason: an earlier one may.
+        let message = py::text_lines(&output)
+            .filter_map(|line| error_detail(py::strip(line)))
+            .rfind(|detail| !detail.is_empty())
+            .unwrap_or("Wireless display scan failed");
         emit(&json!({"ok": false, "error": message, "peers": []}));
         return exit_status(code);
+    }
+    if overflow {
+        emit(&json!({"ok": false, "error": "Wireless display scan failed", "peers": []}));
+        return 1;
     }
     emit(&json!({"ok": true, "error": "", "peers": peers}));
     0
@@ -615,10 +619,19 @@ pub fn cast(args: &CastArgs, mut stops: PipeReader) -> u8 {
         if line.is_empty() {
             return;
         }
-        if let Some((phase, detail)) = phase_for_line(line) {
+        if let Some((phase, mut detail)) = phase_for_line(line) {
             if phase == "casting" {
                 reached_casting = true;
             } else if phase == "error" {
+                // A bare "ERROR:" line gives no reason: keep the one an
+                // earlier line gave, for this event and the final one.
+                if detail.is_empty() {
+                    detail = if last_error.is_empty() {
+                        "FluxCast failed".to_owned()
+                    } else {
+                        last_error.clone()
+                    };
+                }
                 last_error = detail.clone();
             }
             emit(&json!({"type": "phase", "phase": phase, "detail": detail}));
@@ -686,18 +699,28 @@ mod tests {
         assert_eq!(peers[1]["source"], "wpa_cli");
         assert_eq!(peers[2]["index"], 4);
         assert!(parse_scan_output("WFD capability data detected").is_empty());
+        // Only a line break ends a line: a name with U+2028, U+2029 or
+        // U+0085 in it cannot start a peer row of its own.
+        for separator in ['\u{2028}', '\u{2029}', '\u{85}', '\u{b}', '\u{c}'] {
+            let output =
+                format!("[0] 7a:2d:91:40:0b:ce TV{separator}[9] 02:11:22:33:44:55 Fake\r\n");
+            let peers = parse_scan_output(&output);
+            assert_eq!(peers.len(), 1, "{separator:?}");
+            assert_eq!(peers[0]["index"], 0);
+        }
     }
 
     #[test]
     fn phases() {
         assert_eq!(
             phase_for_line("x ERROR: a ERROR: b"),
-            Some(("error", "b".into()))
+            Some(("error", "a ERROR: b".into()))
         );
         assert_eq!(
-            phase_for_line("ERROR:  "),
-            Some(("error", "FluxCast failed".into()))
+            phase_for_line("xERROR: a ERROR: b"),
+            Some(("error", "b".into()))
         );
+        assert_eq!(phase_for_line("ERROR:  "), Some(("error", String::new())));
         assert_eq!(phase_for_line("xERROR: a"), None);
         assert_eq!(phase_for_line("Connecting to x").unwrap().0, "connecting");
     }

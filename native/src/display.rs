@@ -1049,7 +1049,13 @@ fn patch(state: &mut State, request: &Value) -> Result<(), String> {
         if !valid {
             return Err(format!("Invalid display setting: {key}"));
         }
-        monitor.insert(key.clone(), value.clone());
+        // JSON may spell a whole number as 5.0; monitors.lua and `hyprctl
+        // eval` need it written as 5.
+        let value = match value.as_f64() {
+            Some(v) if key != "scale" && key != "refreshRate" => (v as i64).into(),
+            _ => value.clone(),
+        };
+        monitor.insert(key.clone(), value);
     }
     if !draft
         .iter()
