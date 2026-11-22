@@ -523,6 +523,12 @@ ShellRoot {
   function errorsF() {
     eq(shell.service.error, "A display test is already running", "a good brightness write leaves a later display error")
     shell.service.error = ""
+    // The cursor size goes to gsettings and hyprctl (runtime.py checks their calls).
+    shell.service.setCursorSize(48)
+    until(advancedIdle, "the cursor size", errorsG)
+  }
+  function errorsG() {
+    eq(shell.service.error, "", "a cursor size both tools take is no error")
     lifeA()
   }
 
