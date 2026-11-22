@@ -887,7 +887,7 @@ ShellRoot {
   function trialD() {
     eq(shell.service.transaction.phase, "idle", "a dead trial goes idle")
     var view = shell.leaderPanel().popup.bodyItem
-    eq(view.tr(view.actionError), "The display test stopped unexpectedly. The previous settings were restored.", "the recovery says so")
+    check(shell.findText(view, "The display test stopped unexpectedly. The previous settings were restored.") !== null, "the recovery says so on the error line")
     shell.leaderPanel().close()
     until(function () {
       return !shell.service.scanning

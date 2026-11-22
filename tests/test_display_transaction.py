@@ -42,6 +42,9 @@ TEMPLATES = (
     "Duplicate rules for %1; remove the duplicate before saving",
     "FluxCast exited with code %1",
     "Could not start FluxCast: %1",
+    "Could not restore displays: %1",
+    "Could not restore GTK scale: %1",
+    "Configuration changed externally; its backup is in %1",
 )
 
 
@@ -1131,6 +1134,20 @@ class WorkerIntegrationTests(unittest.TestCase):
                 self.assertEqual(self.config.read_text(), self.original)
                 self.assertNotIn("hyprctl\treload", self.c.calls.read_text())
 
+    def test_a_refused_trial_sends_its_reason_and_the_revert_problem_apart(self):
+        # The compositor refuses the trial's rules and then the rollback's.
+        # The error keeps its one text. The reason (the compositor's answer,
+        # shown as it is) and the problem of the revert also come apart, so
+        # the panel shows the problem in the user's language.
+        ident = self.call("status")["state"]["draft"][0]["id"]
+        self.assertTrue(self.call("patch", {"id": ident, "changes": {"scale": 1.25}})["ok"])
+        self.assertTrue(self.call("apply", extra={"TEST_EVAL_ERROR": "1"})["ok"])
+        state = self.wait_phase("idle")["state"]
+        refused = "error: rejected by the test compositor"
+        problem = translated(f"Could not restore displays: {refused}")
+        self.assertEqual((state["errorReason"], state["errorProblems"]), (refused, [problem]))
+        self.assertEqual(state["error"], f"{refused} {problem}")
+
     def test_a_four_thirds_scale_is_confirmed_by_hyprland_readback(self):
         # The trial sets 4/3 and Hyprland shows it as 1.3333334: that counts
         # as the value set, so the test starts instead of being rolled back.
@@ -1247,6 +1264,8 @@ class WorkerIntegrationTests(unittest.TestCase):
         result = self.call("status")
         self.assertEqual(result["state"]["phase"], "idle")
         self.assertEqual(result["state"]["error"], self.RECOVERED)
+        # The same text as the reason, with no problems after it.
+        self.assertEqual((result["state"]["errorReason"], result["state"]["errorProblems"]), (self.RECOVERED, []))
         self.assertEqual(result["state"]["deadline"], 0)
         self.assertEqual(json.loads(self.displays.read_text())[0]["scale"], 1)
         self.assertEqual(result["live"][0]["scale"], 1)
@@ -1259,7 +1278,28 @@ class WorkerIntegrationTests(unittest.TestCase):
         patched = self.call("patch", {"id": ident, "changes": {"scale": 1.5}})
         self.assertTrue(patched["ok"], patched)
         self.assertEqual(patched["state"]["error"], "")
+        # The parts go with the text they make up.
+        self.assertNotIn("errorReason", patched["state"])
+        self.assertNotIn("errorProblems", patched["state"])
         self.assertEqual(self.c.calls.read_text().count("hyprctl\treload"), 0)
+
+    def test_a_failed_recovery_sends_the_reason_and_each_problem_apart(self):
+        # The compositor refuses the recovery's rollback and its GTK scale.
+        # The error keeps its one text. The reason and each problem of the
+        # revert also come apart, so the panel shows each known one in the
+        # user's language and the compositor's answer in them as it is.
+        result = self.start()
+        self.kill_worker(result["state"]["workerPid"])
+        state = self.call("status", extra={"TEST_EVAL_ERROR": "1"})["state"]
+        self.assertEqual(state["phase"], "idle")
+        refused = "error: rejected by the test compositor"
+        reason = translated("The display test stopped unexpectedly.")
+        problems = [
+            translated(f"Could not restore displays: {refused}"),
+            translated(f"Could not restore GTK scale: {refused}"),
+        ]
+        self.assertEqual((state["errorReason"], state["errorProblems"]), (reason, problems))
+        self.assertEqual(state["error"], " ".join([reason, *problems]))
 
     def test_worker_killed_while_saving_restores_monitors_lua(self):
         result = self.start()

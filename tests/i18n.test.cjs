@@ -152,6 +152,11 @@ const HELPER_MESSAGES = [
   ['FluxCast failed'],
   ['FluxCast ended before casting started'],
   ['FluxCast exited with code 5', 'FluxCast exited with code %1', '5'],
+  // A display test's reason and the problems of its revert, each on its own.
+  ['The display test stopped unexpectedly.'],
+  ["Could not restore displays: Command '('hyprctl', 'monitors', 'all', '-j')' timed out after 5 seconds", 'Could not restore displays: %1', "Command '('hyprctl', 'monitors', 'all', '-j')' timed out after 5 seconds"],
+  ['Could not restore GTK scale: Session bus unavailable', 'Could not restore GTK scale: %1', 'Session bus unavailable'],
+  ['Configuration changed externally; its backup is in /run/user/1000/foamy-monitor-0123456789abcdef/monitors.lua.backup', 'Configuration changed externally; its backup is in %1', '/run/user/1000/foamy-monitor-0123456789abcdef/monitors.lua.backup'],
 ];
 
 test('helper refusals the user sees are shown in Norwegian', () => {
@@ -169,6 +174,43 @@ test('helper refusals the user sees are shown in Norwegian', () => {
     assert.notEqual(context.tr(message), message, `shown in English: ${message}`);
     assert.equal(context.tr(message), I.text(key, 'no', detail), message);
   }
+});
+
+test('a display test that ended with problems shows each known part translated', () => {
+  // The real errorText() and tr(), with the state as the helper sends it: the
+  // reason and each problem of the revert apart from the one `error` text.
+  const functions = view.slice(view.indexOf('  function tr('), view.indexOf('  function friendlyDisplayName('));
+  const service = { error: '' };
+  const context = vm.createContext({ MonitorService: service, transaction: {}, FoamyI18n: { t: (key, values) => I.text(key, 'no', values) } });
+  vm.runInContext(functions, context);
+  const no = (key, value) => I.text(key, 'no', value);
+  const timeout = "Command '('hyprctl', 'monitors', 'all', '-j')' timed out after 5 seconds";
+  const refused = 'error: rejected by the compositor';
+  const backup = '/run/user/1000/foamy-monitor-0123456789abcdef/monitors.lua.backup';
+  // [reason, problems, what the error line shows]
+  const cases = [
+    [
+      'The display test stopped unexpectedly.',
+      [`Could not restore displays: ${timeout}`, 'Could not restore GTK scale: Session bus unavailable'],
+      [no('The display test stopped unexpectedly.'), no('Could not restore displays: %1', timeout), no('Could not restore GTK scale: %1', 'Session bus unavailable')],
+    ],
+    // The compositor's own answer as the reason stays as it is.
+    [refused, [`Could not restore displays: ${refused}`], [refused, no('Could not restore displays: %1', refused)]],
+    // Revert or the deadline: no reason, only what the revert could not undo.
+    ['', [`Configuration changed externally; its backup is in ${backup}`], [no('Configuration changed externally; its backup is in %1', backup)]],
+  ];
+  for (const [reason, problems, shown] of cases) {
+    const error = [reason, ...problems].join(' ').trim();
+    context.transaction = { error: error, errorReason: reason, errorProblems: problems };
+    assert.notEqual(context.errorText(), error, `shown in English: ${error}`);
+    assert.equal(context.errorText(), shown.join(' '), error);
+  }
+  // A state file written before these fields came: the one text, as before.
+  context.transaction = { error: 'A display was disconnected during the test' };
+  assert.equal(context.errorText(), no('A display was disconnected during the test'));
+  // A refused command's error comes first.
+  service.error = 'No unsaved changes';
+  assert.equal(context.errorText(), no('No unsaved changes'));
 });
 
 test('a cast error shows translated while the cast is still running', () => {

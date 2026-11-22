@@ -24,7 +24,9 @@
 //!   sha256($HYPRLAND_INSTANCE_SIGNATURE or "default")>/` (fallback
 //!   `/tmp/foamy-<uid>`), mode 0700: `state.json` (0600, atomic rename;
 //!   `phase` idle|applying|testing|saving|reverting, `base`, `draft`,
-//!   `error`, `revision` +1 per write, `gtkScale`, and during a trial
+//!   `error` (after a reverted trial also in parts, `errorReason` and
+//!   `errorProblems`: see below), `revision` +1 per write, `gtkScale`, and
+//!   during a trial
 //!   `token`, `decision`, `deadline` (epoch seconds), `snapshot`,
 //!   `configBefore`, `configAfter`, `monitorChanges`,
 //!   `gtkEnvironmentBefore`, `workerPid`; the first four of those trial
@@ -76,12 +78,21 @@
 //!   the GTK scale and `GDK_SCALE` in the user environment (`systemctl
 //!   --user unset-environment GDK_SCALE` when it was unset; the previous
 //!   value came from `systemctl --user show-environment`).
+//! - A trial that reverted goes idle with `error`: the reason it ended
+//!   (empty for Revert, the deadline or a stop signal), then each problem of
+//!   the revert ("Could not restore displays: …", "Could not restore GTK
+//!   scale: …", "Configuration changed externally; its backup is in …"),
+//!   joined by spaces. `errorReason` (a string) and `errorProblems` (a list
+//!   of strings) hold the same texts apart, so the panel can translate each;
+//!   a command that clears `error` removes them.
 //! - A worker that died without reverting (SIGKILL, a crash): every action
 //!   first checks an active trial's `workerPid`. When /proc no longer shows
 //!   that pid running `worker --token <token>` and `trial.lock` is free,
 //!   the action runs the revert itself (monitors.lua only while it holds
-//!   `configAfter`), goes idle with the error "The display test stopped
-//!   unexpectedly. The previous settings were restored." and carries on.
+//!   `configAfter`), goes idle with the reason "The display test stopped
+//!   unexpectedly. The previous settings were restored." (with problems:
+//!   "The display test stopped unexpectedly." and the problems) and
+//!   carries on.
 //!
 //! ## FluxCast bridge
 //!

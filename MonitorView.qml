@@ -121,7 +121,7 @@ PanelKeyCatcher {
     // code). Translate only these known templates; never interpret or
     // translate the detail (%1) itself.
     if (values === undefined) {
-      var templates = ["Please install %1", "Could not read display settings: %1", "Unsupported scale for %1", "Unsupported resolution or refresh rate for %1", "Cast ended (%1)", "Duplicate rules for %1; remove the duplicate before saving", "FluxCast exited with code %1", "Could not start FluxCast: %1"]
+      var templates = ["Please install %1", "Could not read display settings: %1", "Unsupported scale for %1", "Unsupported resolution or refresh rate for %1", "Cast ended (%1)", "Duplicate rules for %1; remove the duplicate before saving", "FluxCast exited with code %1", "Could not start FluxCast: %1", "Could not restore displays: %1", "Could not restore GTK scale: %1", "Configuration changed externally; its backup is in %1"]
       var whole = String(text)
       for (var i = 0; i < templates.length; i++) {
         var parts = templates[i].split("%1")
@@ -130,6 +130,20 @@ PanelKeyCatcher {
       }
     }
     return FoamyI18n.t(text, values)
+  }
+  // The error line: a refused command's error, else the state's. A display
+  // test that reverted also sends its reason and each problem of the revert
+  // apart (errorReason, errorProblems), so each known text is translated on
+  // its own; tool output in them stays as it is.
+  function errorText() {
+    if (MonitorService.error)
+      return tr(MonitorService.error)
+    const error = transaction.error || ""
+    const reason = transaction.errorReason
+    const problems = transaction.errorProblems
+    if (!error || typeof reason !== "string" || !Array.isArray(problems) || !problems.every(p => typeof p === "string"))
+      return tr(error)
+    return [reason].concat(problems).filter(p => p !== "").map(p => tr(p)).join(" ")
   }
   function friendlyDisplayName(monitor) {
     return tr(Model.friendlyMonitorLabel(monitor))
@@ -721,7 +735,7 @@ PanelKeyCatcher {
         Label {
           width: content.inner
           visible: view.actionError !== ""
-          text: view.tr(view.actionError)
+          text: view.errorText()
           color: Commons.Color.urgent
           wrapMode: Text.WordWrap
           Accessible.role: Accessible.AlertMessage

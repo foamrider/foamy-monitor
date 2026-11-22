@@ -37,6 +37,9 @@ TEMPLATES = (
     "Duplicate rules for %1; remove the duplicate before saving",
     "FluxCast exited with code %1",
     "Could not start FluxCast: %1",
+    "Could not restore displays: %1",
+    "Could not restore GTK scale: %1",
+    "Configuration changed externally; its backup is in %1",
 )
 
 
