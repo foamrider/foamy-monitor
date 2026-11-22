@@ -113,7 +113,8 @@
 //!   failed". Exit 0 after a stop signal or a clean end, else
 //!   FluxCast's status; 2 for an invalid address; 69 for a missing package.
 //! - FluxCast runs in its own session with standard output and error
-//!   merged into one pipe (a scan reads 4 MiB, a cast line 64 KiB),
+//!   merged into one pipe (a scan keeps 4 MiB and fails past it, a cast
+//!   line keeps 64 KiB; the rest is read and dropped),
 //!   `PYTHONUNBUFFERED=1`, and `PR_SET_PDEATHSIG(SIGINT)`, its own cleanup
 //!   path, for when Quickshell SIGKILLs the bridge. The first stop signal
 //!   sends SIGINT to FluxCast; each later one SIGTERM to its process group.

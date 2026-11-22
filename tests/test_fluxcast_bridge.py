@@ -511,6 +511,25 @@ class Bridge(unittest.TestCase):
             ],
         )
 
+    def test_a_scan_and_a_cast_read_an_error_line_alike(self):
+        # The marker counts at the start of the line or after a space; other
+        # leading whitespace makes no error line, in a scan as in a cast.
+        for line, reason in (
+            ("[FluxCast WFD] ERROR: spaced", "spaced"),
+            ("ERROR: first", "first"),
+            ("\tERROR: tabbed", None),
+            (" ERROR: no-break space", None),
+        ):
+            with self.subTest(line=line):
+                self.output.write_text(line + "\n", encoding="utf-8")
+                scan = json.loads(self.run_bridge("scan", FAKE_EXIT="3").stdout)
+                self.assertEqual(scan["error"], reason or translated("Wireless display scan failed"))
+                cast = self.cast(FAKE_EXIT="3")
+                self.assertEqual(
+                    [e["detail"] for e in self.events(cast.stdout) if e.get("phase") == "error"],
+                    [reason] * 2 if reason else [translated("FluxCast exited with code 3")],
+                )
+
     def test_an_overlong_cast_line_is_cut_and_the_next_line_counts(self):
         # FluxCast's log can carry text from the receiver: a line is cut at
         # 64 KiB, so the "ERROR:" after the cut is no error, and the next line

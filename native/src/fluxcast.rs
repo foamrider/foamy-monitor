@@ -501,7 +501,7 @@ pub fn scan(args: &ScanArgs, mut stops: PipeReader) -> u8 {
     if code != 0 {
         // A bare "ERROR:" line gives no reason: an earlier one may.
         let message = py::text_lines(&output)
-            .filter_map(|line| error_detail(py::strip(line)))
+            .filter_map(|line| error_detail(py::rstrip(line)))
             .rfind(|detail| !detail.is_empty())
             .unwrap_or("Wireless display scan failed");
         emit(&json!({"ok": false, "error": message, "peers": []}));
