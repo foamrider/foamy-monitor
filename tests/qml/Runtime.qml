@@ -642,7 +642,53 @@ ShellRoot {
   function refusedD() {
     var view = panel(0).popup.bodyItem
     check(shows(view, "resolution", view.dropdownFor("resolution").currentValue), "a refused resolution shows the mode in use again")
-    shell.sh("cd \"$FOAMY_FAKEBIN\" && mv monitors.json.kept monitors.json", function () {
+    heldA()
+  }
+
+  // ---- Refusals that answer while a display box is dragged ----
+  // The service holds every helper answer until the drop. Two picks for the
+  // display that went away answer during a drag (each helper run waits 1 s
+  // in the fake hyprctl), and the dropped box's own patch starts before the
+  // held answers are applied: each refusal must still reach its own field.
+  function heldA() {
+    var view = panel(0).popup.bodyItem
+    // A pick then stays on show until a refusal ends it, however slow the runs.
+    dropdownIn(view.dropdownFor("resolution")).pickHoldMs = 600000
+    dropdownIn(view.dropdownFor("orientation")).pickHoldMs = 600000
+    shell.sh("printf 1 > \"$FOAMY_CALLS.hyprdelay\"; printf '%s\\n' held-start >> \"$FOAMY_CALLS\"", function () {
+      until(displayIdle, "no helper run before the held picks", function () {
+        pick(view, "resolution", "1280x720")
+        pick(view, "orientation", "1")
+        view.dragging = true
+        // Both runs read the outputs (the fake logs hyprctl-read), and the
+        // second has ended: both answers came during the drag.
+        until(function () {
+          return shell.linesAfter("held-start").filter(function (line) {
+            return line === "hyprctl-read"
+          }).length === 2 && !shell.service.commandProc.running
+        }, "both refusals answered during the drag", heldB)
+      })
+    })
+  }
+  function heldB() {
+    var view = panel(0).popup.bodyItem
+    check(shows(view, "resolution", "1280x720") && shows(view, "orientation", "1"), "answers during a drag wait for the drop")
+    // The drop as the box's onReleased does it: the drag ends, then the
+    // dropped box's patch (another display, put where it already is).
+    var dropped = shell.service.transaction.draft.find(function (m) {
+      return m.name === "eDP-1"
+    })
+    view.dragging = false
+    view.moveMonitor(dropped.name, dropped.x, dropped.y)
+    until(displayIdle, "the drop's patch", heldC)
+  }
+  function heldC() {
+    var view = panel(0).popup.bodyItem
+    check(shows(view, "resolution", view.dropdownFor("resolution").currentValue), "a resolution refused during a drag shows the mode in use again")
+    check(shows(view, "orientation", view.dropdownFor("orientation").currentValue), "an orientation refused during a drag shows the orientation in use again")
+    dropdownIn(view.dropdownFor("resolution")).pickHoldMs = 10000
+    dropdownIn(view.dropdownFor("orientation")).pickHoldMs = 10000
+    shell.sh("rm -f \"$FOAMY_CALLS.hyprdelay\"; cd \"$FOAMY_FAKEBIN\" && mv monitors.json.kept monitors.json", function () {
       shell.service.refresh()
       until(function () {
         var back = shell.service.transaction.draft.find(function (m) {
