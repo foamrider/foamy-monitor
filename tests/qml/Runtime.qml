@@ -561,7 +561,37 @@ ShellRoot {
   }
   function errorsG() {
     eq(shell.service.error, "", "a cursor size both tools take is no error")
-    refusedA()
+    droppedA()
+  }
+
+  // ---- A pick nothing will apply shows the setting in use again ----
+  // A field is disabled while another Advanced job or a display test runs,
+  // but a list opened before that still takes a pick (Qt keeps an open
+  // popup's list enabled). The fake text size command runs until
+  // $FOAMY_CALLS.texthold is gone.
+  function droppedA() {
+    panel(0).open()
+    until(function () {
+      return panel(0).popup.bodyItem && advancedIdle()
+    }, "the popup for the dropped picks", function () {
+      panel(0).popup.bodyItem.setTab("Advanced")
+      shell.sh("touch \"$FOAMY_CALLS.texthold\"", function () {
+        shell.service.setTextSize(14)
+        until(function () {
+          return shell.service.advancedBusy
+        }, "the held text size job", droppedB)
+      })
+    })
+  }
+  function droppedB() {
+    var view = panel(0).popup.bodyItem
+    pick(view, "cursorSize", view.dropdownFor("cursorSize").currentValue === "36" ? "48" : "36")
+    check(shows(view, "cursorSize", view.dropdownFor("cursorSize").currentValue), "a cursor size picked while another Advanced job runs shows the size in use again")
+    pick(view, "textSize", view.dropdownFor("textSize").currentValue === "16" ? "20" : "16")
+    check(shows(view, "textSize", view.dropdownFor("textSize").currentValue), "a text size picked while another Advanced job runs shows the size in use again")
+    shell.sh("rm -f \"$FOAMY_CALLS.texthold\"", function () {
+      until(advancedIdle, "the held text size job's end", refusedA)
+    })
   }
 
   // ---- A refused pick shows the setting in use again at once ----
@@ -810,6 +840,10 @@ ShellRoot {
     }
     eq(view.cursorKey, "revert", "a view built during the trial lands on Revert")
     eq(JSON.stringify(view.stops), JSON.stringify(["revert", "keep"]), "only Revert and Keep take the cursor")
+    // A list opened before the trial began still takes a pick; nothing
+    // changes a display during the trial.
+    pick(view, "resolution", view.dropdownFor("resolution").currentValue === "1280x720" ? "1920x1080" : "1280x720")
+    check(shows(view, "resolution", view.dropdownFor("resolution").currentValue), "a resolution picked during a trial shows the mode in use again")
     view.setTab("Advanced")
     check(view.footerShown, "the trial footer shows on Advanced")
     view.setTab("Wireless")

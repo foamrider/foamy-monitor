@@ -103,6 +103,9 @@ print(open(level).read().strip() if os.path.exists(level) else "%d" % BRIGHTNESS
         "gsettings": LOGGER + 'print("24" if "cursor-size" in sys.argv else "\'Adwaita\'")\n',
         "omarchy-display-text-size": LOGGER
         + """
+# A job that runs until the test removes $FOAMY_CALLS.texthold.
+while os.path.exists(os.environ["FOAMY_CALLS"] + ".texthold"):
+    time.sleep(0.05)
 if os.path.exists(os.environ["FOAMY_CALLS"] + ".textfail"):
     sys.stderr.write("text size refused\\n")
     sys.exit(1)

@@ -238,8 +238,17 @@ PanelKeyCatcher {
   }
   function edit(changes, monitor) {
     monitor = monitor || selected
-    if (!monitor || busy)
+    if (!monitor)
       return
+    // Nothing changes a display during a test. A list opened before the test
+    // began still takes a pick, so its field shows the setting in use again.
+    if (busy) {
+      pickRefused("patch", {
+        id: monitor.id,
+        changes: changes
+      })
+      return
+    }
     MonitorService.enqueue("patch", {
       id: monitor.id,
       changes: changes

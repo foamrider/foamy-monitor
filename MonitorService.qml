@@ -162,8 +162,9 @@ Singleton {
   // not hide it; a status error (every output gone for a moment, a hyprctl
   // timeout) is stale once a later status run succeeds.
   property string statusError: ""
-  // A helper command or an Advanced job failed and left its setting as it
-  // was. The view shows the setting in use again in the field it came from.
+  // A helper command or an Advanced job failed, or an Advanced job was not
+  // started, and left its setting as it was. The view shows the setting in
+  // use again in the field it came from.
   signal commandRefused(string action, var payload)
   function commandFailed(message, action, payload) {
     error = message
@@ -492,8 +493,16 @@ Singleton {
   property int cursorSize: 24
   readonly property bool advancedBusy: advancedProc.running
   function setCursorSize(value) {
-    if (!active || advancedProc.running)
+    if (!active)
       return
+    // One job at a time. A pick from a list opened before the running job
+    // began is refused, so its field shows the size in use again.
+    if (advancedProc.running) {
+      commandRefused("cursor-size", {
+        value: String(Number(value))
+      })
+      return
+    }
     // gsettings prints the theme in single quotes; bash gets ${theme//\'/},
     // with the quote escaped, to drop them.
     advancedProc.command = advancedDeadline.concat(["bash", "-c", 'theme=$(gsettings get org.gnome.desktop.interface cursor-theme); theme=${theme//\\\'/}; gsettings set org.gnome.desktop.interface cursor-size "$1" && hyprctl setcursor "$theme" "$1"', "cursor-size", String(Number(value))])
@@ -504,8 +513,14 @@ Singleton {
     advancedProc.running = true
   }
   function setTextSize(value) {
-    if (!active || advancedProc.running)
+    if (!active)
       return
+    if (advancedProc.running) {
+      commandRefused("text-size", {
+        value: String(Number(value))
+      })
+      return
+    }
     advancedProc.command = advancedDeadline.concat(["omarchy-display-text-size", String(Number(value))])
     advancedProc.action = "text-size"
     advancedProc.payload = {
