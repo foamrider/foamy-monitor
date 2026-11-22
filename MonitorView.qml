@@ -535,7 +535,11 @@ PanelKeyCatcher {
   // from shows the setting in use again (see Field.saveFailed). A resolution
   // pick also sends its refresh rate and scale; turning a display off or on
   // also sends mirrorOf, but only a mode pick sends it without `disabled`.
+  // The display fields show the selected display: another display's refused
+  // patch leaves them alone, even with the same value.
   function pickRefused(action, payload) {
+    if (action === "patch" && payload.id !== view.selectedMonitor)
+      return
     var changes = action === "patch" ? payload.changes : {}
     if (action === "text-size")
       textSizeField.saveFailed(payload.value)

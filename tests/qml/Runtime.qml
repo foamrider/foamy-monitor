@@ -623,6 +623,17 @@ ShellRoot {
     shell.sh("rm -f \"$FOAMY_CALLS.textfail\"; cd \"$FOAMY_FAKEBIN\" && cp monitors.json monitors.json.kept && python3 -c 'import json; rows = json.load(open(\"monitors.json\")); json.dump([r for r in rows if r[\"name\"] != \"DP-1\"], open(\"monitors.json\", \"w\"))'", function () {
       pick(view, "resolution", "1280x720")
       check(shows(view, "resolution", "1280x720"), "the picked resolution shows while the helper takes it")
+      // Another display's refused pick of the same mode is not this pick.
+      shell.service.commandRefused("patch", {
+        id: shell.service.transaction.draft.find(function (m) {
+          return m.name !== "DP-1"
+        }).id,
+        changes: {
+          width: 1280,
+          height: 720
+        }
+      })
+      check(shows(view, "resolution", "1280x720"), "a refused pick of another display leaves this display's pick on show")
       until(function () {
         return shell.service.error === "Display is disconnected" && displayIdle()
       }, "the refused resolution pick", refusedD)
