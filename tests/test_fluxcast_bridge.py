@@ -34,6 +34,9 @@ TEMPLATES = (
     "Unsupported scale for %1",
     "Unsupported resolution or refresh rate for %1",
     "Cast ended (%1)",
+    "Duplicate rules for %1; remove the duplicate before saving",
+    "FluxCast exited with code %1",
+    "Could not start FluxCast: %1",
 )
 
 
@@ -459,7 +462,7 @@ class Bridge(unittest.TestCase):
         self.assertEqual(
             self.events(result.stdout)[-2:],
             [
-                {"type": "phase", "phase": "error", "detail": "FluxCast ended before casting started"},
+                {"type": "phase", "phase": "error", "detail": translated("FluxCast ended before casting started")},
                 {"type": "exit", "expected": False, "code": 0},
             ],
         )
@@ -489,7 +492,7 @@ class Bridge(unittest.TestCase):
         result = self.cast(FAKE_EXIT="3")
         self.assertEqual(
             [e["detail"] for e in self.events(result.stdout) if e.get("phase") == "error"],
-            ["FluxCast failed"] * 2,
+            [translated("FluxCast failed")] * 2,
         )
         # The reason is the text after the first marker, as in a scan.
         self.output.write_text("  [FluxCast WFD] ERROR: no p2p device: ERROR: x  \n")
@@ -503,7 +506,7 @@ class Bridge(unittest.TestCase):
         self.assertEqual(
             self.events(result.stdout)[-2:],
             [
-                {"type": "phase", "phase": "error", "detail": "FluxCast exited with code 5"},
+                {"type": "phase", "phase": "error", "detail": translated("FluxCast exited with code 5")},
                 {"type": "exit", "expected": False, "code": 5},
             ],
         )
@@ -543,7 +546,7 @@ class Bridge(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(
             self.events(result.stdout),
-            [{"type": "phase", "phase": "error", "detail": "Invalid wireless display address"}],
+            [{"type": "phase", "phase": "error", "detail": translated("Invalid wireless display address")}],
         )
         for args in (
             ["cast", "--monitor", "DP-1"],

@@ -39,6 +39,9 @@ TEMPLATES = (
     "Unsupported scale for %1",
     "Unsupported resolution or refresh rate for %1",
     "Cast ended (%1)",
+    "Duplicate rules for %1; remove the duplicate before saving",
+    "FluxCast exited with code %1",
+    "Could not start FluxCast: %1",
 )
 
 
@@ -407,7 +410,7 @@ class DisplayModelTests(unittest.TestCase):
             ),
         ]:
             with self.subTest(source=source):
-                self.assertEqual(self.gtk_status(source)["error"], message)
+                self.assertEqual(self.gtk_status(source)["error"], translated(message))
         for source, value in [
             ('hl.env("GDK_SCALE", "3")', 3),
             ("hl.env('GDK_SCALE', '4') -- x", 4),
@@ -445,8 +448,8 @@ class DisplayModelTests(unittest.TestCase):
         self.c.reset(source)
         for invalid in [0, 1.5, True, "2", 5, None, 2.0]:
             reply = self.c.call("gtk-scale", {"value": invalid})
-            self.assertEqual(reply.get("error"), "GTK scale must be 1, 2, 3, or 4", invalid)
-        self.assertEqual(self.c.call("gtk-scale", {})["error"], "GTK scale must be 1, 2, 3, or 4")
+            self.assertEqual(reply.get("error"), translated("GTK scale must be 1, 2, 3, or 4"), invalid)
+        self.assertEqual(self.c.call("gtk-scale", {})["error"], translated("GTK scale must be 1, 2, 3, or 4"))
 
     def test_gtk_scale_stages_without_touching_config_or_environment(self):
         original = 'hl.env("GDK_SCALE", "2")\n'
@@ -833,7 +836,7 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
             with self.subTest(source=source):
                 reply, config = self.c.plan(source, [monitor(), monitor("DP-2", x=3840)], [("DP-1", {"x": 100})])
                 self.assertIsNone(config)
-                self.assertEqual(reply["error"], message)
+                self.assertEqual(reply["error"], translated(message))
                 self.assertEqual(self.c.call("status")["state"]["phase"], "idle")
         # Rules for other displays, and unmatched ones, are left as they are.
         source = 'hl.monitor({ output = "DP-2", scale = 2 })\nhl.monitor({ output = "HDMI-A-1", scale = 3 })\n'
