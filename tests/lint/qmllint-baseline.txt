@@ -1,7 +1,6 @@
 # qmllint findings accepted when the check was adopted. tests/validate.sh fails on any
 # finding not listed here. Regenerate with `tests/validate.sh --update-baseline qmllint`
 # only to drop fixed entries or after reviewing every added one; never to pass a check.
-IdentifyOverlay.qml: missing-property: Member "display" not found on type "QObject" | font.pixelSize: FoamyStyle.font.display
 MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var after = Object.assign({}, brightnessAfterRead)
 MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var after = Object.assign({}, root.brightnessAfterRead)
 MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var change = root.brightnessAfterRead[job.name]
@@ -14,13 +13,9 @@ MonitorService.qml: block-scope-var-declaration: var declaration in block scope 
 MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var stepRequesters = Object.assign({}, _stepRequester)
 MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var writes = Object.assign({}, brightnessWrites)
 MonitorService.qml: import: Type MonitorService not declared as singleton in qmldir but using pragma Singleton
-MonitorService.qml: missing-property: Member "action" not found on type "Process" | if (commandProc.action !== "status" || error === statusError)
-MonitorService.qml: missing-property: Member "action" not found on type "Process" | statusError = commandProc.action === "status" ? message : ""
-MonitorService.qml: missing-property: Member "action" not found on type MonitorService::commandProc with type Process | commandProc.action = next.action
 MonitorService.qml: missing-property: Member "job" not found on type "Process" | var job = brightnessProc.job
 MonitorService.qml: missing-property: Member "job" not found on type MonitorService::brightnessProc with type Process | brightnessProc.job = job
 MonitorService.qml: missing-property: Member "job" not found on type MonitorService::brightnessProc with type Process | brightnessProc.job = null
-MonitorService.qml: missing-property: Member "payload" not found on type MonitorService::commandProc with type Process | commandProc.payload = next.payload
 MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var cx = 0; cx < candidatesX.length; cx++)
 MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var cy = 0; cy < candidatesY.length; cy++)
 MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < others.length; i++) {
@@ -35,12 +30,6 @@ MonitorView.qml: block-scope-var-declaration: var declaration in block scope is 
 MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var templates = ["Please install %1", "Could not read display settings: %1", "Unsupported scale for %1", "Unsupported resolution or refresh rate for %1", "Cast 
 MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var whole = String(text)
 MonitorView.qml: missing-property: Member "baseSize" not found on type "QObject" | currentValue: String(Style.font.baseSize)
-MonitorView.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: FoamyStyle.font.body
-MonitorView.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: small ? FoamyStyle.font.bodySmall : FoamyStyle.font.body
-MonitorView.qml: missing-property: Member "body" not found on type "QObject" | fontSize: FoamyStyle.font.body
-MonitorView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: small ? FoamyStyle.font.bodySmall : FoamyStyle.font.body
-MonitorView.qml: missing-property: Member "caption" not found on type "QObject" | font.pixelSize: FoamyStyle.font.caption
-MonitorView.qml: missing-property: Member "caption" not found on type "QObject" | font.pixelSize: FoamyStyle.font.caption
 MonitorView.qml: renamed-type: "Button" is explicitly renamed to "Ui.Button" via a qmldir entry or QT_QML_SOURCE_TYPENAME CMake property, use "Ui.Button" instead. | Button {
 MonitorView.qml: renamed-type: "Button" is explicitly renamed to "Ui.Button" via a qmldir entry or QT_QML_SOURCE_TYPENAME CMake property, use "Ui.Button" instead. | Button {
 MonitorView.qml: renamed-type: "Button" is explicitly renamed to "Ui.Button" via a qmldir entry or QT_QML_SOURCE_TYPENAME CMake property, use "Ui.Button" instead. | Button {
