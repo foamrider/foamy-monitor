@@ -34,6 +34,9 @@ TEMPLATES = (
     "Unsupported scale for %1",
     "Unsupported resolution or refresh rate for %1",
     "Cast ended (%1)",
+    "Duplicate rules for %1; remove the duplicate before saving",
+    "FluxCast exited with code %1",
+    "Could not start FluxCast: %1",
 )
 
 
@@ -281,16 +284,35 @@ class Bridge(unittest.TestCase):
         )
         self.assertIn("æøå", result.stdout)  # not \u-escaped
 
-    def test_scan_output_beyond_4_mib_is_drained_and_dropped(self):
+    def test_only_a_line_break_ends_a_scan_line(self):
+        # A nearby device names itself: a separator that Python's
+        # str.splitlines() would split on must not add a receiver row.
+        for separator in ("\u2028", "\u2029", "\u0085", "\x0b", "\x0c", "\x1c"):
+            with self.subTest(separator=hex(ord(separator))):
+                self.output.write_text(f"  [0] 7a:2d:91:40:0b:ce TV{separator}[9] 02:11:22:33:44:55 Fake via wpa_cli\n")
+                peers = json.loads(self.run_bridge("scan").stdout)["peers"]
+                self.assertEqual([(p["index"], p["address"]) for p in peers], [(0, "7A:2D:91:40:0B:CE")])
+                self.assertEqual(peers[0]["name"], f"TV{separator}[9] 02:11:22:33:44:55 Fake")
+
+    def test_scan_output_beyond_4_mib_fails_the_scan(self):
         # 5 MiB of noise between the peers and a late one. A bridge that
         # stopped reading at the cap would leave FluxCast blocked on a full
-        # pipe; one that kept everything would list the late peer.
+        # pipe (and the scan would not end); one that answered with the peers
+        # it kept would show a cut list as the whole one.
         self.output.write_text(PEERS + ("x" * 1023 + "\n") * (5 * 1024) + "  [20] 7a:2d:91:40:0b:d1 Late via wpa_cli\n")
         result = self.run_bridge("scan")
-        self.assertEqual(result.returncode, 0, result.stderr[-500:])
-        reply = json.loads(result.stdout)
-        self.assertTrue(reply["ok"])
-        self.assertEqual([p["index"] for p in reply["peers"]], [0, 1, 12])
+        self.assertEqual(result.returncode, 1, result.stderr[-500:])
+        self.assertEqual(
+            json.loads(result.stdout), {"ok": False, "error": translated("Wireless display scan failed"), "peers": []}
+        )
+        # Exactly 4 MiB is still a whole scan; one byte more is not.
+        limit = 4 << 20
+        for extra, ok in ((0, True), (1, False)):
+            with self.subTest(size=limit + extra):
+                self.output.write_text(PEERS + "x" * (limit + extra - len(PEERS.encode())))
+                reply = json.loads(self.run_bridge("scan").stdout)
+                self.assertIs(reply["ok"], ok)
+                self.assertEqual([p["index"] for p in reply["peers"]], [0, 1, 12] if ok else [])
 
     def test_scan_failure_reports_the_last_error_and_exit_code(self):
         self.output.write_text(
@@ -299,6 +321,16 @@ class Bridge(unittest.TestCase):
         result = self.run_bridge("scan", FAKE_EXIT="4")
         self.assertEqual(result.returncode, 4)
         self.assertEqual(json.loads(result.stdout), {"ok": False, "error": "no p2p device: ERROR: x", "peers": []})
+        # A bare "ERROR:" after it gives no reason and keeps the earlier one;
+        # "ERROR:" inside a word marks no error line (as in a cast).
+        for later in ("ERROR:\n  ERROR:  \n", "xERROR: not an error\n"):
+            with self.subTest(later=later):
+                self.output.write_text("[FluxCast WFD] ERROR: no p2p device\n" + later)
+                result = self.run_bridge("scan", FAKE_EXIT="4")
+                self.assertEqual(json.loads(result.stdout)["error"], "no p2p device")
+        self.output.write_text("[FluxCast WFD] ERROR:\n")
+        result = self.run_bridge("scan", FAKE_EXIT="4")
+        self.assertEqual(json.loads(result.stdout)["error"], translated("Wireless display scan failed"))
         self.output.write_text("[0] 7a:2d:91:40:0b:ce TV\n")
         result = self.run_bridge("scan", FAKE_EXIT="3")
         self.assertEqual(result.returncode, 3)
@@ -430,7 +462,7 @@ class Bridge(unittest.TestCase):
         self.assertEqual(
             self.events(result.stdout)[-2:],
             [
-                {"type": "phase", "phase": "error", "detail": "FluxCast ended before casting started"},
+                {"type": "phase", "phase": "error", "detail": translated("FluxCast ended before casting started")},
                 {"type": "exit", "expected": False, "code": 0},
             ],
         )
@@ -442,26 +474,61 @@ class Bridge(unittest.TestCase):
         )
         result = self.cast(FAKE_EXIT="3")
         self.assertEqual(result.returncode, 3)
+        # The bare "ERROR:" gives no reason, so the earlier one stays: in its
+        # own event and in the final one, which MonitorService shows.
         self.assertEqual(
             protocol(self.events(result.stdout)),
             [
                 ("phase", "starting", None, None, None),
                 ("phase", "waiting", None, None, None),
                 ("phase", "error", "receiver rejected the session", None, None),
-                ("phase", "error", "FluxCast failed", None, None),
-                ("phase", "error", "FluxCast failed", None, None),
+                ("phase", "error", "receiver rejected the session", None, None),
+                ("phase", "error", "receiver rejected the session", None, None),
                 ("exit", None, None, False, 3),
             ],
+        )
+        # Only bare ones: there is no reason to keep.
+        self.output.write_text("ERROR:\n")
+        result = self.cast(FAKE_EXIT="3")
+        self.assertEqual(
+            [e["detail"] for e in self.events(result.stdout) if e.get("phase") == "error"],
+            [translated("FluxCast failed")] * 2,
+        )
+        # The reason is the text after the first marker, as in a scan.
+        self.output.write_text("  [FluxCast WFD] ERROR: no p2p device: ERROR: x  \n")
+        result = self.cast(FAKE_EXIT="3")
+        self.assertEqual(
+            [e["detail"] for e in self.events(result.stdout) if e.get("phase") == "error"],
+            ["no p2p device: ERROR: x"] * 2,
         )
         self.output.write_text("")
         result = self.cast(FAKE_EXIT="5")
         self.assertEqual(
             self.events(result.stdout)[-2:],
             [
-                {"type": "phase", "phase": "error", "detail": "FluxCast exited with code 5"},
+                {"type": "phase", "phase": "error", "detail": translated("FluxCast exited with code 5")},
                 {"type": "exit", "expected": False, "code": 5},
             ],
         )
+
+    def test_a_scan_and_a_cast_read_an_error_line_alike(self):
+        # The marker counts at the start of the line or after a space; other
+        # leading whitespace makes no error line, in a scan as in a cast.
+        for line, reason in (
+            ("[FluxCast WFD] ERROR: spaced", "spaced"),
+            ("ERROR: first", "first"),
+            ("\tERROR: tabbed", None),
+            (" ERROR: no-break space", None),
+        ):
+            with self.subTest(line=line):
+                self.output.write_text(line + "\n", encoding="utf-8")
+                scan = json.loads(self.run_bridge("scan", FAKE_EXIT="3").stdout)
+                self.assertEqual(scan["error"], reason or translated("Wireless display scan failed"))
+                cast = self.cast(FAKE_EXIT="3")
+                self.assertEqual(
+                    [e["detail"] for e in self.events(cast.stdout) if e.get("phase") == "error"],
+                    [reason] * 2 if reason else [translated("FluxCast exited with code 3")],
+                )
 
     def test_an_overlong_cast_line_is_cut_and_the_next_line_counts(self):
         # FluxCast's log can carry text from the receiver: a line is cut at
@@ -498,7 +565,7 @@ class Bridge(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(
             self.events(result.stdout),
-            [{"type": "phase", "phase": "error", "detail": "Invalid wireless display address"}],
+            [{"type": "phase", "phase": "error", "detail": translated("Invalid wireless display address")}],
         )
         for args in (
             ["cast", "--monitor", "DP-1"],

@@ -128,3 +128,61 @@ test('helper errors: the known prefix is translated, never the detail', () => {
   for (const key of ['Please install %1', 'Could not read display settings: %1', 'Unsupported scale for %1', 'Unsupported resolution or refresh rate for %1', 'Cast ended (%1)', 'Could not read the FluxCast scan'])
     assert.ok(Object.hasOwn(I.en, key), `missing catalog entry ${key}`);
 });
+
+// Refusals of the helper that MonitorView shows through tr(): the display
+// error line, the GTK scale line and the cast error. Each row is the message
+// as the helper sends it, and for a template its catalog key and detail.
+const HELPER_MESSAGES = [
+  ['GTK scale must be 1, 2, 3, or 4'],
+  ['GTK scale must be a standalone hl.env call in monitors.lua'],
+  ['GTK scale must be a whole-number string or tostring of a local whole number in monitors.lua'],
+  ['GTK scale must use a standalone local whole number without reassignments or other uses in monitors.lua'],
+  ['GTK scale requires the unmodified tostring function in monitors.lua'],
+  ['Remove duplicate GDK_SCALE settings from monitors.lua'],
+  ['Conditional monitor configuration must be edited in monitors.lua'],
+  ['Use literal hl.monitor({...}) rules in monitors.lua before saving'],
+  ['Monitor rules must be standalone calls in monitors.lua'],
+  ['Monitor output must be a literal string in monitors.lua'],
+  ['Duplicate monitor field; simplify monitors.lua before saving'],
+  ['Cannot update this monitor rule in monitors.lua'],
+  ['A monitor description matches multiple displays; use a unique description'],
+  ['Duplicate rules for DP-1; remove the duplicate before saving', 'Duplicate rules for %1; remove the duplicate before saving', 'DP-1'],
+  ['Invalid wireless display address'],
+  ["Could not start FluxCast: [Errno 13] Permission denied: 'fluxcast'", 'Could not start FluxCast: %1', "[Errno 13] Permission denied: 'fluxcast'"],
+  ['FluxCast failed'],
+  ['FluxCast ended before casting started'],
+  ['FluxCast exited with code 5', 'FluxCast exited with code %1', '5'],
+];
+
+test('helper refusals the user sees are shown in Norwegian', () => {
+  const wrapper = view.slice(view.indexOf('  function tr('), view.indexOf('  function friendlyDisplayName('));
+  const context = vm.createContext({ FoamyI18n: { t: (key, values) => I.text(key, 'no', values) } });
+  vm.runInContext(wrapper, context);
+  // The helper's source holds each text (a template with its {…} detail), so
+  // a message renamed there fails here rather than showing in English.
+  const helper = fs.readdirSync(path.join(root, 'native/src')).map(f => source(`native/src/${f}`)).join('\n');
+  const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const [message, key = message, detail] of HELPER_MESSAGES) {
+    const [head, tail = ''] = key.split('%1');
+    const literal = detail === undefined ? escape(JSON.stringify(key)) : `"${escape(head)}\\{\\w*\\}${escape(tail)}"`;
+    assert.match(helper, new RegExp(literal), `the helper no longer sends ${key}`);
+    assert.notEqual(context.tr(message), message, `shown in English: ${message}`);
+    assert.equal(context.tr(message), I.text(key, 'no', detail), message);
+  }
+});
+
+test('a cast error shows translated while the cast is still running', () => {
+  // The real wirelessPhaseLabel() and tr(), with the service in the error phase.
+  const functions = view.slice(view.indexOf('  function tr('), view.indexOf('  readonly property var rotationOptions'));
+  const service = { castPhase: 'error', castDetail: '', castTargetName: 'Living Room TV' };
+  const context = vm.createContext({ MonitorService: service, FoamyI18n: { t: (key, values) => I.text(key, 'no', values) } });
+  vm.runInContext(functions, context);
+  for (const [detail, key = detail, value] of [['FluxCast failed'], ['Please install fluxcast-git', 'Please install %1', 'fluxcast-git'], ['FluxCast exited with code 5', 'FluxCast exited with code %1', '5']]) {
+    service.castDetail = detail;
+    assert.equal(context.wirelessPhaseLabel(), I.text(key, 'no', value), detail);
+    assert.notEqual(context.wirelessPhaseLabel(), detail, `shown in English: ${detail}`);
+  }
+  // FluxCast's own words after "ERROR:" have no entry and stay as they are.
+  service.castDetail = 'receiver rejected the session';
+  assert.equal(context.wirelessPhaseLabel(), 'receiver rejected the session');
+});

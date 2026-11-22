@@ -39,6 +39,9 @@ TEMPLATES = (
     "Unsupported scale for %1",
     "Unsupported resolution or refresh rate for %1",
     "Cast ended (%1)",
+    "Duplicate rules for %1; remove the duplicate before saving",
+    "FluxCast exited with code %1",
+    "Could not start FluxCast: %1",
 )
 
 
@@ -98,7 +101,7 @@ def monitor(name="DP-1", disabled=False, **changes):
 
 
 FAKE_HYPRCTL = r"""
-import json, os, re, sys
+import json, os, re, struct, sys
 from pathlib import Path
 with open(os.environ['TEST_CALLS'], 'a') as log:
     log.write('\t'.join(['hyprctl'] + sys.argv[1:]) + '\n')
@@ -139,6 +142,9 @@ elif args[0] in ('eval','reload'):
                 x,y=values['position'].split('x');row.update(x=int(x),y=int(y))
             for key in ('scale','transform','disabled'):
                 if key in values: row[key]=values[key]
+            # Hyprland keeps the scale as a float and prints its shortest form.
+            if 'scale' in values and os.environ.get('TEST_FLOAT_SCALE'):
+                row['scale']=float('%.8g' % struct.unpack('f', struct.pack('f', values['scale']))[0])
             if 'mirror' in values: row['mirrorOf']=values['mirror']
     # One eval that the compositor accepts and then shows at another advertised
     # refresh rate; the marker goes with it, so the next eval (the rollback) works.
@@ -404,7 +410,7 @@ class DisplayModelTests(unittest.TestCase):
             ),
         ]:
             with self.subTest(source=source):
-                self.assertEqual(self.gtk_status(source)["error"], message)
+                self.assertEqual(self.gtk_status(source)["error"], translated(message))
         for source, value in [
             ('hl.env("GDK_SCALE", "3")', 3),
             ("hl.env('GDK_SCALE', '4') -- x", 4),
@@ -442,8 +448,8 @@ class DisplayModelTests(unittest.TestCase):
         self.c.reset(source)
         for invalid in [0, 1.5, True, "2", 5, None, 2.0]:
             reply = self.c.call("gtk-scale", {"value": invalid})
-            self.assertEqual(reply.get("error"), "GTK scale must be 1, 2, 3, or 4", invalid)
-        self.assertEqual(self.c.call("gtk-scale", {})["error"], "GTK scale must be 1, 2, 3, or 4")
+            self.assertEqual(reply.get("error"), translated("GTK scale must be 1, 2, 3, or 4"), invalid)
+        self.assertEqual(self.c.call("gtk-scale", {})["error"], translated("GTK scale must be 1, 2, 3, or 4"))
 
     def test_gtk_scale_stages_without_touching_config_or_environment(self):
         original = 'hl.env("GDK_SCALE", "2")\n'
@@ -783,6 +789,10 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
             ({"scale": 0.75}, "scale = 0.75,"),
             ({"x": 2000, "y": -1080}, 'position = "2000x-1080", scale = 1, transform = 0'),
             ({"transform": 3, "x": 1920}, "transform = 3"),
+            # JSON may spell a whole number as a float; the rule never does.
+            ({"x": 2000.0, "y": -1080.0}, 'position = "2000x-1080", scale = 1, transform = 0,'),
+            ({"transform": 3.0, "x": 1920.0}, 'position = "1920x0", scale = 1, transform = 3,'),
+            ({"width": 1920.0, "height": 1080.0, "refreshRate": 120}, 'mode = "1920x1080@120.00000"'),
             ({"disabled": True}, "disabled = true"),
         ]:
             with self.subTest(changes=changes):
@@ -826,7 +836,7 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
             with self.subTest(source=source):
                 reply, config = self.c.plan(source, [monitor(), monitor("DP-2", x=3840)], [("DP-1", {"x": 100})])
                 self.assertIsNone(config)
-                self.assertEqual(reply["error"], message)
+                self.assertEqual(reply["error"], translated(message))
                 self.assertEqual(self.c.call("status")["state"]["phase"], "idle")
         # Rules for other displays, and unmatched ones, are left as they are.
         source = 'hl.monitor({ output = "DP-2", scale = 2 })\nhl.monitor({ output = "HDMI-A-1", scale = 3 })\n'
@@ -954,6 +964,20 @@ hl.monitor({ output = "", mode = "preferred", scale = 1.25 })
         self.assertTrue(reply["ok"], reply)
         self.c.reset("")
         self.assertEqual(self.c.call("apply")["error"], translated("No unsaved changes"))
+
+    def test_a_four_thirds_scale_as_hyprland_reports_it_can_be_applied(self):
+        # Hyprland prints a display's scale in its shortest float form
+        # (1.3333334 for 4/3), not rounded to 1.33: a display that runs at 4/3
+        # does not make its own or another display's change look fractional.
+        live = [
+            monitor(width=2560, height=1440, scale=1.3333334, availableModes=["2560x1440@60.00Hz"]),
+            monitor("eDP-1", x=1920),
+        ]
+        for patches in ([("eDP-1", {"y": 10})], [("DP-1", {"y": 1080})]):
+            with self.subTest(patches=patches):
+                reply, config = self.c.plan("", live, patches)
+                self.assertTrue(reply["ok"], reply)
+                self.assertIsNotNone(config)
 
     def test_apply_preconditions(self):
         self.c.reset("")
@@ -1106,6 +1130,19 @@ class WorkerIntegrationTests(unittest.TestCase):
                 self.assertEqual((live["scale"], live["refreshRate"]), (1, 60.0))
                 self.assertEqual(self.config.read_text(), self.original)
                 self.assertNotIn("hyprctl\treload", self.c.calls.read_text())
+
+    def test_a_four_thirds_scale_is_confirmed_by_hyprland_readback(self):
+        # The trial sets 4/3 and Hyprland shows it as 1.3333334: that counts
+        # as the value set, so the test starts instead of being rolled back.
+        self.c.reset(self.original, [monitor(width=2560, height=1440, availableModes=["2560x1440@60.00Hz"])])
+        ident = self.call("status")["state"]["draft"][0]["id"]
+        self.assertTrue(self.call("patch", {"id": ident, "changes": {"scale": 4 / 3}})["ok"])
+        self.assertTrue(self.call("apply", extra={"TEST_FLOAT_SCALE": "1"})["ok"])
+        state = self.wait_phase("testing")["state"]
+        self.assertEqual(json.loads(self.displays.read_text())[0]["scale"], 1.3333334)
+        self.call("revert", {"token": state["token"]})
+        self.assertEqual(self.wait_phase("idle")["state"]["error"], "")
+        self.assertEqual(json.loads(self.displays.read_text())[0]["scale"], 1)
 
     def test_detached_timeout_restores_live_state_without_writing_config(self):
         state = self.start()["state"]

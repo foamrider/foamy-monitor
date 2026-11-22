@@ -40,8 +40,8 @@
 //!   draft edits; a disconnected display with edits stays with
 //!   `connected:false`.
 //! - `patch` edits width, height, refreshRate, scale, transform (0..=7), x,
-//!   y (whole numbers, |v| < 100000), disabled (bool), mirrorOf (string,
-//!   < 256 characters). `gtk-scale` stages 1..=4 (an int).
+//!   y (whole numbers, |v| < 100000, stored as integers), disabled (bool),
+//!   mirrorOf (string, < 256 characters). `gtk-scale` stages 1..=4 (an int).
 //! - `monitors.lua` is `$XDG_CONFIG_HOME/hypr/monitors.lua` (default
 //!   `~/.config`), read as text (symlinks followed, `\r\n`/`\r` read as
 //!   `\n`, at most 16 MiB) and parsed literally: **user Lua is never
@@ -97,18 +97,24 @@
 //! - `scan` runs `fluxcast --wfd-scan --wfd-timeout N` and prints one line:
 //!   `{"ok":true,"error":"","peers":[{"index","address" (upper case),
 //!   "name","source","wfdCapable"}]}`, exit 0; `{"ok":false,"error":"Scan
-//!   cancelled","peers":[]}`, exit 130, after a stop signal; the last
-//!   "ERROR:" line (or "Wireless display scan failed") with FluxCast's exit
-//!   status; the `check` reply for a missing package (exit 69).
+//!   cancelled","peers":[]}`, exit 130, after a stop signal; the reason of
+//!   the last "ERROR:" line that gives one (or "Wireless display scan
+//!   failed") with FluxCast's exit status; "Wireless display scan failed",
+//!   exit 1, for output past 4 MiB; the `check` reply for a missing package
+//!   (exit 69). Only `\n`, `\r\n` and `\r` end a line.
 //! - `cast` runs `fluxcast --protocol wfd --wfd-peer MAC --monitor NAME
 //!   --output-res R --fps F --bitrate B --wfd-timeout T` and prints JSON
 //!   lines `{"type":"phase","phase":"starting|scanning|connecting|waiting|
 //!   casting|stopping|idle|error","detail"}` and finally
 //!   `{"type":"exit","expected","code"}` (code: FluxCast's exit status, or
-//!   minus the signal). Exit 0 after a stop signal or a clean end, else
+//!   minus the signal). An error's detail is the reason of an "ERROR:" line
+//!   (the text after its first marker, at the start of the line or after a
+//!   space); a bare "ERROR:" repeats the last reason, else "FluxCast
+//!   failed". Exit 0 after a stop signal or a clean end, else
 //!   FluxCast's status; 2 for an invalid address; 69 for a missing package.
 //! - FluxCast runs in its own session with standard output and error
-//!   merged into one pipe (a scan keeps 4 MiB, a cast line 64 KiB),
+//!   merged into one pipe (a scan keeps 4 MiB and fails past it, a cast
+//!   line keeps 64 KiB; the rest is read and dropped),
 //!   `PYTHONUNBUFFERED=1`, and `PR_SET_PDEATHSIG(SIGINT)`, its own cleanup
 //!   path, for when Quickshell SIGKILLs the bridge. The first stop signal
 //!   sends SIGINT to FluxCast; each later one SIGTERM to its process group.

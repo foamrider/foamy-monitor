@@ -38,6 +38,14 @@ pub fn universal_newlines(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
+/// The lines a text-mode reader yields, without their ends: only `\n`,
+/// `\r\n` and a lone `\r` end a line (unlike [`splitlines`]); no empty
+/// last item for a trailing break.
+pub fn text_lines(text: &str) -> impl DoubleEndedIterator<Item = &str> {
+    text.split_terminator('\n')
+        .flat_map(|line| line.strip_suffix('\r').unwrap_or(line).split('\r'))
+}
+
 /// `str.splitlines()`: splits on `\n`, `\r`, `\r\n`, `\v`, `\f`, U+001C..1E,
 /// U+0085, U+2028 and U+2029; no empty last item for a trailing break.
 pub fn splitlines(text: &str) -> Vec<&str> {
@@ -532,6 +540,14 @@ mod tests {
         );
         assert_eq!(splitlines("a\n\nb"), ["a", "", "b"]);
         assert!(splitlines("").is_empty());
+        let lines = |text| text_lines(text).collect::<Vec<_>>();
+        assert_eq!(
+            lines("a\r\nb\rc\nd\u{2028}e\u{85}f\u{b}g\n"),
+            ["a", "b", "c", "d\u{2028}e\u{85}f\u{b}g"]
+        );
+        assert_eq!(lines("a\r\rb\n\nc\r"), ["a", "", "b", "", "c"]);
+        assert_eq!(lines("\n"), [""]);
+        assert!(lines("").is_empty());
         assert_eq!(universal_newlines("a\r\nb\rc"), "a\nb\nc");
         assert_eq!(strip("\u{1f} x \u{a0}"), "x");
         assert_eq!(rstrip("x\t\n"), "x");

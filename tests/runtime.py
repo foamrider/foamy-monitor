@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Load Foamy Monitor offscreen on Omarchy 4.5
 with the foamy-kit harness: isolated HOME/XDG/runtime dirs, no Wayland or
-Hyprland, and fake hyprctl/brightness/FluxCast/ffmpeg and a logging bash on
-a PATH without Omarchy's scripts (tests/fakebin.py). Checks
+Hyprland, and fake hyprctl/brightness/gsettings/text-size script/FluxCast/
+ffmpeg and a logging bash on a PATH without Omarchy's scripts
+(tests/fakebin.py). Checks
 tests/qml/Runtime.qml; the leader's IPC (its function names, `status`, and
 `brightness` refusing junk); from the fakes' calls: that brightness jobs never
-overlapped, the cast's FluxCast command, the text size command, that the stop
-of a stubborn scan met a FluxCast that ignored it, and that the teardown
-stopped the running cast.
+overlapped, the cast's FluxCast command, the text size and cursor size
+commands, that the stop of a stubborn scan met a FluxCast that ignored it,
+and that the teardown stopped the running cast.
 
 FOAMY_KIT (default ~/GitHub/Personal/foamy-kit) provides the harness.
 The host is Omarchy 4.5: FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else
@@ -137,6 +138,11 @@ def calls_failures(lines):
     # The Advanced text size reaches its script with the chosen value.
     if "omarchy-display-text-size\t12" not in lines:
         failures.append("no call of omarchy-display-text-size with 12")
+    # The cursor size reaches gsettings, and hyprctl gets the theme without
+    # the quotes that gsettings prints around it.
+    for call in ("gsettings\tset\torg.gnome.desktop.interface\tcursor-size\t48", "hyprctl\tsetcursor\tAdwaita\t48"):
+        if call not in lines:
+            failures.append(f"no call {call!r} for the cursor size")
     if "fluxcast-ignored\t2" not in lines:
         failures.append("the stubborn scan's first stop did not meet a FluxCast that ignored it")
     # Only the lines between the two markers count: when qs exits, the cast's
