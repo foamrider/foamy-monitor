@@ -13,13 +13,9 @@ MonitorService.qml: block-scope-var-declaration: var declaration in block scope 
 MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var stepRequesters = Object.assign({}, _stepRequester)
 MonitorService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var writes = Object.assign({}, brightnessWrites)
 MonitorService.qml: import: Type MonitorService not declared as singleton in qmldir but using pragma Singleton
-MonitorService.qml: missing-property: Member "action" not found on type "Process" | if (commandProc.action !== "status" || error === statusError)
-MonitorService.qml: missing-property: Member "action" not found on type "Process" | statusError = commandProc.action === "status" ? message : ""
-MonitorService.qml: missing-property: Member "action" not found on type MonitorService::commandProc with type Process | commandProc.action = next.action
 MonitorService.qml: missing-property: Member "job" not found on type "Process" | var job = brightnessProc.job
 MonitorService.qml: missing-property: Member "job" not found on type MonitorService::brightnessProc with type Process | brightnessProc.job = job
 MonitorService.qml: missing-property: Member "job" not found on type MonitorService::brightnessProc with type Process | brightnessProc.job = null
-MonitorService.qml: missing-property: Member "payload" not found on type MonitorService::commandProc with type Process | commandProc.payload = next.payload
 MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var cx = 0; cx < candidatesX.length; cx++)
 MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var cy = 0; cy < candidatesY.length; cy++)
 MonitorView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < others.length; i++) {
