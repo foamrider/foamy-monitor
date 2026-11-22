@@ -377,7 +377,7 @@ pub fn parse_scan_output(output: &str) -> Vec<Value> {
             peers.push(json!({
                 "index": index,
                 "address": address.to_ascii_uppercase(),
-                "name": py::strip(name),
+                "name": one_line(py::strip(name)),
                 "source": py::strip(source),
                 "wfdCapable": false,
             }));
@@ -390,6 +390,14 @@ pub fn parse_scan_output(output: &str) -> Vec<Value> {
         }
     }
     peers
+}
+
+/// A receiver name as one line: NEL, LINE SEPARATOR and PARAGRAPH SEPARATOR
+/// (Unicode's line ends other than `\r` and `\n`, which end a scan line)
+/// become spaces. A plain-text label breaks its line at U+2028, so one
+/// receiver row would look like two.
+fn one_line(name: &str) -> String {
+    name.replace(['\u{85}', '\u{2028}', '\u{2029}'], " ")
 }
 
 /// `^\s*\[(\d+)]\s+([0-9a-fA-F:]{17})(?:\s+(.*))?$`
@@ -531,7 +539,6 @@ fn mac_address(text: &str) -> bool {
 struct Lines {
     pending: Vec<u8>,
     carriage: bool,
-    overlong: bool,
 }
 
 impl Lines {
@@ -547,11 +554,8 @@ impl Lines {
                 self.carriage = b == b'\r';
                 line(&self.pending);
                 self.pending.clear();
-                self.overlong = false;
             } else if self.pending.len() < LINE_LIMIT {
                 self.pending.push(b);
-            } else {
-                self.overlong = true;
             }
         }
     }
@@ -640,7 +644,6 @@ pub fn cast(args: &CastArgs, mut stops: PipeReader) -> u8 {
     let mut lines = Lines {
         pending: Vec::new(),
         carriage: false,
-        overlong: false,
     };
     pump(&child, output, &mut stops, &mut stopper, |chunk| {
         lines.feed(chunk, &mut on_line)
@@ -730,7 +733,6 @@ mod tests {
         let mut lines = Lines {
             pending: Vec::new(),
             carriage: false,
-            overlong: false,
         };
         let mut seen = Vec::new();
         let mut push = |line: &[u8]| seen.push(String::from_utf8_lossy(line).into_owned());

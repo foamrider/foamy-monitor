@@ -82,7 +82,9 @@ Singleton {
   // may have read the displays before the change, so run once more after it.
   property bool statusPending: false
   property int fileRevision: 0
-  property string deferredResult: ""
+  // Helper answers that came during a drag, in order, each with the request
+  // it answers; they are applied after the drop.
+  property var deferredResults: []
   property var commands: []
   property int statusRuns: 0
   readonly property bool testing: transaction.phase === "testing"
@@ -160,26 +162,36 @@ Singleton {
   // not hide it; a status error (every output gone for a moment, a hyprctl
   // timeout) is stale once a later status run succeeds.
   property string statusError: ""
-  // A helper command or an Advanced job failed and left its setting as it
-  // was. The view shows the setting in use again in the field it came from.
+  // A helper command or an Advanced job failed, or an Advanced job was not
+  // started, and left its setting as it was. The view shows the setting in
+  // use again in the field it came from.
   signal commandRefused(string action, var payload)
-  function commandFailed(message) {
+  function commandFailed(message, action, payload) {
     error = message
-    statusError = commandProc.action === "status" ? message : ""
-    if (commandProc.action !== "status")
-      commandRefused(commandProc.action, commandProc.payload)
+    statusError = action === "status" ? message : ""
+    if (action !== "status")
+      commandRefused(action, payload)
   }
-  function acceptResult(text) {
+  // `action` and `payload` are the request this answer is for. An answer held
+  // during a drag is applied after the drop, when commandProc may already
+  // run another request (the dropped box's patch, a queued command).
+  function acceptResult(text, action, payload) {
     if (helperUnavailable)
       return
     if (arrangementDragActive) {
-      deferredResult = text
+      deferredResults = deferredResults.concat([
+        {
+          text: text,
+          action: action,
+          payload: payload
+        }
+      ])
       return
     }
     try {
       var result = JSON.parse(text)
       if (!result.ok) {
-        commandFailed(result.error)
+        commandFailed(result.error, action, payload)
         return
       }
       // A clean draft alone is not proof of a save: wait for Keep to finish successfully.
@@ -198,14 +210,14 @@ Singleton {
         gtkScale = gtk
       if (result.statePath && result.statePath !== statePath)
         statePath = result.statePath
-      if (commandProc.action !== "status" || error === statusError)
+      if (action !== "status" || error === statusError)
         error = ""
       statusError = ""
       // The file moved past this answer while the command ran: another writer.
       if (fileRevision > (transaction.revision || 0))
         statusSoon()
     } catch (e) {
-      commandFailed("Could not read display settings: " + e)
+      commandFailed("Could not read display settings: " + e, action, payload)
     }
   }
   function flushCommands() {
@@ -215,11 +227,13 @@ Singleton {
       enqueue("status")
   }
   onArrangementDragActiveChanged: if (!arrangementDragActive) {
-    var result = deferredResult
-    deferredResult = ""
-    if (result)
+    var held = deferredResults
+    deferredResults = []
+    if (held.length)
       Qt.callLater(function () {
-        root.acceptResult(result)
+        held.forEach(function (answer) {
+          root.acceptResult(answer.text, answer.action, answer.payload)
+        })
       })
     Qt.callLater(root.flushCommands)
   }
@@ -234,7 +248,7 @@ Singleton {
     onStarted: write(JSON.stringify(payload) + "\n")
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.acceptResult(text)
+      onStreamFinished: root.acceptResult(text, root.commandProc.action, root.commandProc.payload)
     }
     stderr: StdioCollector {
       id: commandError
@@ -479,8 +493,16 @@ Singleton {
   property int cursorSize: 24
   readonly property bool advancedBusy: advancedProc.running
   function setCursorSize(value) {
-    if (!active || advancedProc.running)
+    if (!active)
       return
+    // One job at a time. A pick from a list opened before the running job
+    // began is refused, so its field shows the size in use again.
+    if (advancedProc.running) {
+      commandRefused("cursor-size", {
+        value: String(Number(value))
+      })
+      return
+    }
     // gsettings prints the theme in single quotes; bash gets ${theme//\'/},
     // with the quote escaped, to drop them.
     advancedProc.command = advancedDeadline.concat(["bash", "-c", 'theme=$(gsettings get org.gnome.desktop.interface cursor-theme); theme=${theme//\\\'/}; gsettings set org.gnome.desktop.interface cursor-size "$1" && hyprctl setcursor "$theme" "$1"', "cursor-size", String(Number(value))])
@@ -491,8 +513,14 @@ Singleton {
     advancedProc.running = true
   }
   function setTextSize(value) {
-    if (!active || advancedProc.running)
+    if (!active)
       return
+    if (advancedProc.running) {
+      commandRefused("text-size", {
+        value: String(Number(value))
+      })
+      return
+    }
     advancedProc.command = advancedDeadline.concat(["omarchy-display-text-size", String(Number(value))])
     advancedProc.action = "text-size"
     advancedProc.payload = {
@@ -804,10 +832,12 @@ Singleton {
   }
 
   // ---- Lifecycle ----------------------------------------------------------
-  // The last panel is gone (plugin disabled or removed) or the shell is
-  // reloading. Quickshell SIGKILLs a destroyed Process, so ask the bridges to
-  // stop first; FluxCast also stops on its own when its bridge dies
-  // (PR_SET_PDEATHSIG in the helper's FluxCast bridge).
+  // The last panel is gone (plugin disabled or removed). Quickshell SIGKILLs
+  // a destroyed Process, so ask the bridges to stop first. A shell quit or
+  // reload never gets here: Quickshell 0.3.2 runs no onDestruction handler
+  // of a singleton, and the release timer ends with the old shell. Then
+  // FluxCast stops on its own when its bridge dies (PR_SET_PDEATHSIG in the
+  // helper's FluxCast bridge).
   property int teardowns: 0
   function teardown() {
     teardowns++

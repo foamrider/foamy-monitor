@@ -286,13 +286,16 @@ class Bridge(unittest.TestCase):
 
     def test_only_a_line_break_ends_a_scan_line(self):
         # A nearby device names itself: a separator that Python's
-        # str.splitlines() would split on must not add a receiver row.
+        # str.splitlines() would split on must not add a receiver row. A line
+        # or paragraph separator in the name becomes a space, or the row's
+        # label would show the name on two lines (U+2028), like two rows.
         for separator in ("\u2028", "\u2029", "\u0085", "\x0b", "\x0c", "\x1c"):
             with self.subTest(separator=hex(ord(separator))):
                 self.output.write_text(f"  [0] 7a:2d:91:40:0b:ce TV{separator}[9] 02:11:22:33:44:55 Fake via wpa_cli\n")
                 peers = json.loads(self.run_bridge("scan").stdout)["peers"]
                 self.assertEqual([(p["index"], p["address"]) for p in peers], [(0, "7A:2D:91:40:0B:CE")])
-                self.assertEqual(peers[0]["name"], f"TV{separator}[9] 02:11:22:33:44:55 Fake")
+                shown = " " if separator in "\u2028\u2029\u0085" else separator
+                self.assertEqual(peers[0]["name"], f"TV{shown}[9] 02:11:22:33:44:55 Fake")
 
     def test_scan_output_beyond_4_mib_fails_the_scan(self):
         # 5 MiB of noise between the peers and a late one. A bridge that

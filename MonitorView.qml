@@ -78,10 +78,10 @@ PanelKeyCatcher {
     if (index >= 0)
       cursor.hover(index)
   }
+  // The cursor on the stop `key`; no cursor for a key no stop has (the
+  // preview's states without one).
   function place(key) {
-    var index = stops.indexOf(key)
-    if (index >= 0)
-      cursor.index = index
+    cursor.index = stops.indexOf(key)
   }
   function stopIndex(key, prefix) {
     return key.indexOf(prefix) === 0 ? Number(key.slice(prefix.length)) : -1
@@ -238,8 +238,17 @@ PanelKeyCatcher {
   }
   function edit(changes, monitor) {
     monitor = monitor || selected
-    if (!monitor || busy)
+    if (!monitor)
       return
+    // Nothing changes a display during a test. A list opened before the test
+    // began still takes a pick, so its field shows the setting in use again.
+    if (busy) {
+      pickRefused("patch", {
+        id: monitor.id,
+        changes: changes
+      })
+      return
+    }
     MonitorService.enqueue("patch", {
       id: monitor.id,
       changes: changes

@@ -96,7 +96,8 @@
 //!   "peers":[],"error":"Please install …"|""}`, exit 0.
 //! - `scan` runs `fluxcast --wfd-scan --wfd-timeout N` and prints one line:
 //!   `{"ok":true,"error":"","peers":[{"index","address" (upper case),
-//!   "name","source","wfdCapable"}]}`, exit 0; `{"ok":false,"error":"Scan
+//!   "name" (U+0085, U+2028 and U+2029 in it become spaces),"source",
+//!   "wfdCapable"}]}`, exit 0; `{"ok":false,"error":"Scan
 //!   cancelled","peers":[]}`, exit 130, after a stop signal; the reason of
 //!   the last "ERROR:" line that gives one (or "Wireless display scan
 //!   failed") with FluxCast's exit status; "Wireless display scan failed",

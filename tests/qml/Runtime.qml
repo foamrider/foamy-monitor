@@ -107,8 +107,9 @@ ShellRoot {
     }
   }
 
-  // The fakes' calls log ($FOAMY_CALLS). blockLoading makes the read after
-  // reload() see the file as it is now, so a wait on it is never stale.
+  // The fakes' calls log ($FOAMY_CALLS). text() right after reload() can
+  // still return what the previous reload read, so the steps poll it in a
+  // wait and never take one read as the file as it is now.
   FileView {
     id: callsLog
     path: Quickshell.env("FOAMY_CALLS")
@@ -561,7 +562,37 @@ ShellRoot {
   }
   function errorsG() {
     eq(shell.service.error, "", "a cursor size both tools take is no error")
-    refusedA()
+    droppedA()
+  }
+
+  // ---- A pick nothing will apply shows the setting in use again ----
+  // A field is disabled while another Advanced job or a display test runs,
+  // but a list opened before that still takes a pick (Qt keeps an open
+  // popup's list enabled). The fake text size command runs until
+  // $FOAMY_CALLS.texthold is gone.
+  function droppedA() {
+    panel(0).open()
+    until(function () {
+      return panel(0).popup.bodyItem && advancedIdle()
+    }, "the popup for the dropped picks", function () {
+      panel(0).popup.bodyItem.setTab("Advanced")
+      shell.sh("touch \"$FOAMY_CALLS.texthold\"", function () {
+        shell.service.setTextSize(14)
+        until(function () {
+          return shell.service.advancedBusy
+        }, "the held text size job", droppedB)
+      })
+    })
+  }
+  function droppedB() {
+    var view = panel(0).popup.bodyItem
+    pick(view, "cursorSize", view.dropdownFor("cursorSize").currentValue === "36" ? "48" : "36")
+    check(shows(view, "cursorSize", view.dropdownFor("cursorSize").currentValue), "a cursor size picked while another Advanced job runs shows the size in use again")
+    pick(view, "textSize", view.dropdownFor("textSize").currentValue === "16" ? "20" : "16")
+    check(shows(view, "textSize", view.dropdownFor("textSize").currentValue), "a text size picked while another Advanced job runs shows the size in use again")
+    shell.sh("rm -f \"$FOAMY_CALLS.texthold\"", function () {
+      until(advancedIdle, "the held text size job's end", refusedA)
+    })
   }
 
   // ---- A refused pick shows the setting in use again at once ----
@@ -642,7 +673,52 @@ ShellRoot {
   function refusedD() {
     var view = panel(0).popup.bodyItem
     check(shows(view, "resolution", view.dropdownFor("resolution").currentValue), "a refused resolution shows the mode in use again")
-    shell.sh("cd \"$FOAMY_FAKEBIN\" && mv monitors.json.kept monitors.json", function () {
+    heldA()
+  }
+
+  // ---- Refusals that answer while a display box is dragged ----
+  // The service holds every helper answer until the drop. Two picks for the
+  // display that went away answer during a drag (each helper run waits 1 s
+  // in the fake hyprctl), and the dropped box's own patch starts before the
+  // held answers are applied: each refusal must still reach its own field.
+  function heldA() {
+    var view = panel(0).popup.bodyItem
+    // A pick then stays on show until a refusal ends it, however slow the runs.
+    dropdownIn(view.dropdownFor("resolution")).pickHoldMs = 600000
+    dropdownIn(view.dropdownFor("orientation")).pickHoldMs = 600000
+    shell.sh("printf 1 > \"$FOAMY_CALLS.hyprdelay\"", function () {
+      until(displayIdle, "no helper run before the held picks", function () {
+        pick(view, "resolution", "1280x720")
+        pick(view, "orientation", "1")
+        view.dragging = true
+        // The second pick's run is queued behind the first, and a status
+        // run waits for the drop: an empty queue means both picks' runs
+        // have ended and both answers came during the drag.
+        until(function () {
+          return !shell.service.commandProc.running && shell.service.commands.length === 0
+        }, "both refusals answered during the drag", heldB)
+      })
+    })
+  }
+  function heldB() {
+    var view = panel(0).popup.bodyItem
+    check(shows(view, "resolution", "1280x720") && shows(view, "orientation", "1"), "answers during a drag wait for the drop")
+    // The drop as the box's onReleased does it: the drag ends, then the
+    // dropped box's patch (another display, put where it already is).
+    var dropped = shell.service.transaction.draft.find(function (m) {
+      return m.name === "eDP-1"
+    })
+    view.dragging = false
+    view.moveMonitor(dropped.name, dropped.x, dropped.y)
+    until(displayIdle, "the drop's patch", heldC)
+  }
+  function heldC() {
+    var view = panel(0).popup.bodyItem
+    check(shows(view, "resolution", view.dropdownFor("resolution").currentValue), "a resolution refused during a drag shows the mode in use again")
+    check(shows(view, "orientation", view.dropdownFor("orientation").currentValue), "an orientation refused during a drag shows the orientation in use again")
+    dropdownIn(view.dropdownFor("resolution")).pickHoldMs = 10000
+    dropdownIn(view.dropdownFor("orientation")).pickHoldMs = 10000
+    shell.sh("rm -f \"$FOAMY_CALLS.hyprdelay\"; cd \"$FOAMY_FAKEBIN\" && mv monitors.json.kept monitors.json", function () {
       shell.service.refresh()
       until(function () {
         var back = shell.service.transaction.draft.find(function (m) {
@@ -764,6 +840,10 @@ ShellRoot {
     }
     eq(view.cursorKey, "revert", "a view built during the trial lands on Revert")
     eq(JSON.stringify(view.stops), JSON.stringify(["revert", "keep"]), "only Revert and Keep take the cursor")
+    // A list opened before the trial began still takes a pick; nothing
+    // changes a display during the trial.
+    pick(view, "resolution", view.dropdownFor("resolution").currentValue === "1280x720" ? "1920x1080" : "1280x720")
+    check(shows(view, "resolution", view.dropdownFor("resolution").currentValue), "a resolution picked during a trial shows the mode in use again")
     view.setTab("Advanced")
     check(view.footerShown, "the trial footer shows on Advanced")
     view.setTab("Wireless")
