@@ -78,10 +78,10 @@ PanelKeyCatcher {
     if (index >= 0)
       cursor.hover(index)
   }
+  // The cursor on the stop `key`; no cursor for a key no stop has (the
+  // preview's states without one).
   function place(key) {
-    var index = stops.indexOf(key)
-    if (index >= 0)
-      cursor.index = index
+    cursor.index = stops.indexOf(key)
   }
   function stopIndex(key, prefix) {
     return key.indexOf(prefix) === 0 ? Number(key.slice(prefix.length)) : -1
