@@ -50,8 +50,9 @@ unplugged. Brightness, text size and cursor size apply immediately.
 
 ### Keyboard
 
-One cursor, shared with the pointer: arrows or `j`/`k` move it, `h`/`l` switch
-tabs and step the brightness, Enter activates (and opens a dropdown), `m` on a
+One cursor, shared with the pointer: arrows or `j`/`k` move it, `h`/`l` move
+along the tab row (one stop; Enter opens the tab) and step the brightness,
+Enter activates (and opens a dropdown), `m` on a
 display in the diagram moves it with the arrow keys (10 px per press; Enter or
 Esc to drop), `w` opens Wireless, `r` refreshes, Ctrl+S saves.
 Tab and Shift+Tab move to the next bar panel. Esc reverts a running trial,

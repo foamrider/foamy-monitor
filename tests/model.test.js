@@ -134,14 +134,14 @@ test("one brightness job at a time, writes first", () => {
   assert.deepEqual(Model.parseBrightness(1, "42"), { available: false, percent: 0 })
 })
 
-test("cursor stops in reading order, no Settings stop; a trial has only Revert and Keep", () => {
+test("cursor stops in reading order, the tab row one stop, no Settings stop; a trial has only Revert and Keep", () => {
   assert.deepEqual(Model.viewStops("Advanced", false, { changes: 0 }),
-    ["tab:Display", "tab:Advanced", "tab:Wireless", "textSize", "cursorSize", "gtkScale"])
+    ["tabs", "textSize", "cursorSize", "gtkScale"])
   assert.deepEqual(Model.viewStops("Display", false, { boxes: 2, offline: 1, changes: 1 }),
-    ["tab:Display", "tab:Advanced", "tab:Wireless", "box:0", "box:1", "identify", "offline:0", "mode", "power",
+    ["tabs", "box:0", "box:1", "identify", "offline:0", "mode", "power",
       "resolution", "rate", "scale", "orientation", "brightness", "discard", "save"])
   assert.deepEqual(Model.viewStops("Wireless", false, { peers: 2 }),
-    ["tab:Display", "tab:Advanced", "tab:Wireless", "scan", "peer:0", "peer:1"])
+    ["tabs", "scan", "peer:0", "peer:1"])
   assert.deepEqual(Model.viewStops("Display", true, { boxes: 2, changes: 3 }), ["revert", "keep"])
 })
 
