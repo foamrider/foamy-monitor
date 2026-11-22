@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Load Foamy Monitor offscreen on Omarchy 4.5
 with the foamy-kit harness: isolated HOME/XDG/runtime dirs, no Wayland or
-Hyprland, and fake hyprctl/brightness/FluxCast/ffmpeg and a logging bash on
-a PATH without Omarchy's scripts (tests/fakebin.py). Checks
+Hyprland, and fake hyprctl/brightness/gsettings/text-size script/FluxCast/
+ffmpeg and a logging bash on a PATH without Omarchy's scripts
+(tests/fakebin.py). Checks
 tests/qml/Runtime.qml; the leader's IPC (its function names, `status`, and
 `brightness` refusing junk); from the fakes' calls: that brightness jobs never
 overlapped, the cast's FluxCast command, the text size and cursor size
