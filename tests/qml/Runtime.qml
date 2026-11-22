@@ -107,8 +107,9 @@ ShellRoot {
     }
   }
 
-  // The fakes' calls log ($FOAMY_CALLS). blockLoading makes the read after
-  // reload() see the file as it is now, so a wait on it is never stale.
+  // The fakes' calls log ($FOAMY_CALLS). text() right after reload() can
+  // still return what the previous reload read, so the steps poll it in a
+  // wait and never take one read as the file as it is now.
   FileView {
     id: callsLog
     path: Quickshell.env("FOAMY_CALLS")
@@ -685,17 +686,16 @@ ShellRoot {
     // A pick then stays on show until a refusal ends it, however slow the runs.
     dropdownIn(view.dropdownFor("resolution")).pickHoldMs = 600000
     dropdownIn(view.dropdownFor("orientation")).pickHoldMs = 600000
-    shell.sh("printf 1 > \"$FOAMY_CALLS.hyprdelay\"; printf '%s\\n' held-start >> \"$FOAMY_CALLS\"", function () {
+    shell.sh("printf 1 > \"$FOAMY_CALLS.hyprdelay\"", function () {
       until(displayIdle, "no helper run before the held picks", function () {
         pick(view, "resolution", "1280x720")
         pick(view, "orientation", "1")
         view.dragging = true
-        // Both runs read the outputs (the fake logs hyprctl-read), and the
-        // second has ended: both answers came during the drag.
+        // The second pick's run is queued behind the first, and a status
+        // run waits for the drop: an empty queue means both picks' runs
+        // have ended and both answers came during the drag.
         until(function () {
-          return shell.linesAfter("held-start").filter(function (line) {
-            return line === "hyprctl-read"
-          }).length === 2 && !shell.service.commandProc.running
+          return !shell.service.commandProc.running && shell.service.commands.length === 0
         }, "both refusals answered during the drag", heldB)
       })
     })
