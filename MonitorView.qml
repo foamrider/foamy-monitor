@@ -83,8 +83,8 @@ PanelKeyCatcher {
     if (index >= 0)
       cursor.index = index
   }
-  function stopIndex(prefix) {
-    return cursorKey.indexOf(prefix) === 0 ? Number(cursorKey.slice(prefix.length)) : -1
+  function stopIndex(key, prefix) {
+    return key.indexOf(prefix) === 0 ? Number(key.slice(prefix.length)) : -1
   }
 
   FoamyCursor {
@@ -363,16 +363,16 @@ PanelKeyCatcher {
       setTab(key.slice(4))
     else if (key.indexOf("box:") === 0) {
       var monitor = transaction.draft.find(function (m) {
-        return m.name === view.boxName(view.stopIndex("box:"))
+        return m.name === view.boxName(view.stopIndex(key, "box:"))
       })
       if (monitor)
         selectMonitor(monitor.id)
     } else if (key.indexOf("offline:") === 0) {
-      var off = offlineMonitors[stopIndex("offline:")]
+      let off = offlineMonitors[stopIndex(key, "offline:")]
       if (off)
         selectMonitor(off.id)
     } else if (key.indexOf("peer:") === 0)
-      connectPeer(MonitorService.wirelessPeers[stopIndex("peer:")])
+      connectPeer(MonitorService.wirelessPeers[stopIndex(key, "peer:")])
     else if (key === "identify")
       MonitorService.showIdentify()
     else if (key === "power")
@@ -478,7 +478,7 @@ PanelKeyCatcher {
       MonitorService.refresh()
       refreshBrightness()
     } else if (text === "m" && cursorKey.indexOf("box:") === 0)
-      moving = boxName(stopIndex("box:"))
+      moving = boxName(stopIndex(cursorKey, "box:"))
   }
   onCursorKeyChanged: defer(revealCursor)
   onTestingChanged: {
@@ -557,11 +557,11 @@ PanelKeyCatcher {
     if (key.indexOf("tab:") === 0)
       return tabRepeater.itemAt(tabs.indexOf(key.slice(4)))
     if (key.indexOf("box:") === 0)
-      return diagram.boxItem(stopIndex("box:"))
+      return diagram.boxItem(stopIndex(key, "box:"))
     if (key.indexOf("offline:") === 0)
-      return offlineRepeater.itemAt(stopIndex("offline:"))
+      return offlineRepeater.itemAt(stopIndex(key, "offline:"))
     if (key.indexOf("peer:") === 0)
-      return peerRepeater.itemAt(stopIndex("peer:"))
+      return peerRepeater.itemAt(stopIndex(key, "peer:"))
     return ({
         identify: identifyButton,
         power: powerButton,

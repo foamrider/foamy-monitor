@@ -330,6 +330,7 @@ ShellRoot {
     eq(shell.service.wirelessWanted, true, "the Wireless tab wants a scan")
     view.setTab("Display")
     eq(shell.service.wirelessWanted, false, "leaving Wireless releases it")
+    check(view.itemFor("box:1") !== null && view.itemFor("box:1") !== view.itemFor("box:0"), "itemFor finds the display box its key names")
     view.place("box:1")
     shell.key(view, "m")
     check(view.moving !== "", "m picks up the display under the cursor")
@@ -725,10 +726,9 @@ ShellRoot {
     check(shell.service.wirelessScannedAt > 0, "the finished scan is timestamped")
     eq(view.scanSpinning, false, "the glyph stops with the scan")
     eq(view.scanIndicatorShown, false, "no searching row with results")
-    view.place("peer:1")
-    check(view.itemFor("peer:1") !== null, "both receivers are listed")
+    // itemFor finds the row its key names, wherever the cursor is.
+    check(view.itemFor("peer:1") !== null && view.itemFor("peer:1") !== view.itemFor("peer:0"), "both receivers are listed")
     // A nearby device chooses its own name: markup in it is shown as text.
-    view.place("peer:0")
     var label = shell.findText(view.itemFor("peer:0"), "<b>Living</b> Room TV")
     check(label !== null && label.textFormat === Text.PlainText, "a receiver name is shown as plain text")
     panel(0).close()
@@ -749,8 +749,7 @@ ShellRoot {
     var view = panel(1).popup.bodyItem
     view.setTab("Wireless")
     eq(shell.addresses(), "7A:2D:91:40:0B:CE,02:11:22:33:44:55", "the reopened popup shows the cached list at once")
-    view.place("peer:1")
-    check(view.itemFor("peer:1") !== null, "cached receivers are listed")
+    check(view.itemFor("peer:1") !== null && view.itemFor("peer:1") !== view.itemFor("peer:0"), "cached receivers are listed")
     until(function () {
       return panel(1).popup.bodyItem.scanSpinning
     }, "the refresh", wifiE2)
