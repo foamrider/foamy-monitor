@@ -117,10 +117,11 @@ PanelKeyCatcher {
   // ---- Strings ------------------------------------------------------------
   function tr(text, values) {
     // Helpers return English recovery messages plus opaque package/monitor
-    // details (and the service a cast's exit code). Translate only these
+    // details, exit codes and system errors (and the service a cast's exit
+    // code). Translate only these
     // known templates; never interpret or translate the detail (%1) itself.
     if (values === undefined) {
-      var templates = ["Please install %1", "Could not read display settings: %1", "Unsupported scale for %1", "Unsupported resolution or refresh rate for %1", "Cast ended (%1)"]
+      var templates = ["Please install %1", "Could not read display settings: %1", "Unsupported scale for %1", "Unsupported resolution or refresh rate for %1", "Cast ended (%1)", "Duplicate rules for %1; remove the duplicate before saving", "FluxCast exited with code %1", "Could not start FluxCast: %1"]
       var whole = String(text)
       for (var i = 0; i < templates.length; i++) {
         var parts = templates[i].split("%1")
