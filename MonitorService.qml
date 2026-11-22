@@ -832,10 +832,12 @@ Singleton {
   }
 
   // ---- Lifecycle ----------------------------------------------------------
-  // The last panel is gone (plugin disabled or removed) or the shell is
-  // reloading. Quickshell SIGKILLs a destroyed Process, so ask the bridges to
-  // stop first; FluxCast also stops on its own when its bridge dies
-  // (PR_SET_PDEATHSIG in the helper's FluxCast bridge).
+  // The last panel is gone (plugin disabled or removed). Quickshell SIGKILLs
+  // a destroyed Process, so ask the bridges to stop first. A shell quit or
+  // reload never gets here: Quickshell 0.3.2 runs no onDestruction handler
+  // of a singleton, and the release timer ends with the old shell. Then
+  // FluxCast stops on its own when its bridge dies (PR_SET_PDEATHSIG in the
+  // helper's FluxCast bridge).
   property int teardowns: 0
   function teardown() {
     teardowns++
