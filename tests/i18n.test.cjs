@@ -170,3 +170,19 @@ test('helper refusals the user sees are shown in Norwegian', () => {
     assert.equal(context.tr(message), I.text(key, 'no', detail), message);
   }
 });
+
+test('a cast error shows translated while the cast is still running', () => {
+  // The real wirelessPhaseLabel() and tr(), with the service in the error phase.
+  const functions = view.slice(view.indexOf('  function tr('), view.indexOf('  readonly property var rotationOptions'));
+  const service = { castPhase: 'error', castDetail: '', castTargetName: 'Living Room TV' };
+  const context = vm.createContext({ MonitorService: service, FoamyI18n: { t: (key, values) => I.text(key, 'no', values) } });
+  vm.runInContext(functions, context);
+  for (const [detail, key = detail, value] of [['FluxCast failed'], ['Please install fluxcast-git', 'Please install %1', 'fluxcast-git'], ['FluxCast exited with code 5', 'FluxCast exited with code %1', '5']]) {
+    service.castDetail = detail;
+    assert.equal(context.wirelessPhaseLabel(), I.text(key, 'no', value), detail);
+    assert.notEqual(context.wirelessPhaseLabel(), detail, `shown in English: ${detail}`);
+  }
+  // FluxCast's own words after "ERROR:" have no entry and stay as they are.
+  service.castDetail = 'receiver rejected the session';
+  assert.equal(context.wirelessPhaseLabel(), 'receiver rejected the session');
+});

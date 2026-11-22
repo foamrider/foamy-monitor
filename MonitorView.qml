@@ -144,7 +144,7 @@ PanelKeyCatcher {
     if (phase === "stopping")
       return tr("Stopping…")
     if (phase === "error")
-      return MonitorService.castDetail
+      return tr(MonitorService.castDetail)
     return tr("Connecting to %1…", MonitorService.castTargetName)
   }
   readonly property var rotationOptions: [
