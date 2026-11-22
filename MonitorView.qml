@@ -526,6 +526,33 @@ PanelKeyCatcher {
     function onTransactionChanged() {
       view.defer(view.ensureSelection)
     }
+    function onCommandRefused(action, payload) {
+      view.pickRefused(action, payload)
+    }
+  }
+  // A refused pick leaves the field's value as it was, so its dropdown would
+  // show the pick for its hold time. Only the field the refused value came
+  // from shows the setting in use again (see Field.saveFailed). A resolution
+  // pick also sends its refresh rate and scale; turning a display off or on
+  // also sends mirrorOf, but only a mode pick sends it without `disabled`.
+  function pickRefused(action, payload) {
+    var changes = action === "patch" ? payload.changes : {}
+    if (action === "text-size")
+      textSizeField.saveFailed(payload.value)
+    else if (action === "cursor-size")
+      cursorSizeField.saveFailed(payload.value)
+    else if (action === "gtk-scale")
+      gtkScaleField.saveFailed(payload.value)
+    else if ("width" in changes)
+      resolutionField.saveFailed(changes.width + "x" + changes.height)
+    else if ("refreshRate" in changes)
+      rateField.saveFailed(changes.refreshRate)
+    else if ("scale" in changes)
+      scaleField.saveFailed(changes.scale)
+    else if ("transform" in changes)
+      orientationField.saveFailed(changes.transform)
+    else if ("mirrorOf" in changes && !("disabled" in changes))
+      modeField.saveFailed(changes.mirrorOf)
   }
   function ensureSelection() {
     if (selected || !transaction.draft.length)
@@ -1228,6 +1255,11 @@ PanelKeyCatcher {
     signal changed(string value)
     function open() {
       dropdown.open()
+    }
+    // `value` failed to save. A newer pick on show stays: its own answer is still to come.
+    function saveFailed(value) {
+      if (dropdown.pickedValue === String(value))
+        dropdown.saveFailed()
     }
     implicitWidth: dropdown.implicitWidth
     implicitHeight: fieldLabel.implicitHeight + FoamyStyle.gapSmall + dropdown.rowHeight

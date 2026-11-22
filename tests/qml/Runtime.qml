@@ -12,8 +12,9 @@ import "plugin/kit"
 // monitors), one leader and one startup status for all of them, state-file
 // and Hyprland-event refreshes with every popup closed, the lazy popup body,
 // the single keyboard cursor, serialised brightness, a running trial (Revert
-// and Keep, Esc reverts), the wireless cache, the cast, RTL, and the
-// teardown that stops a running cast when the last panel goes.
+// and Keep, Esc reverts), refused dropdown picks, the wireless cache, the
+// cast, RTL, and the teardown that stops a running cast when the last panel
+// goes.
 //
 // Each step waits for the state it checks (FoamyWait.waitFor), so a loaded
 // machine only makes the run slower. wait.after() is kept where the time is
@@ -560,7 +561,118 @@ ShellRoot {
   }
   function errorsG() {
     eq(shell.service.error, "", "a cursor size both tools take is no error")
-    lifeA()
+    refusedA()
+  }
+
+  // ---- A refused pick shows the setting in use again at once ----
+  // A dropdown keeps showing a pick until its value follows; a pick the host
+  // command or the helper refuses never changes the value.
+  property var refusedKept: null
+  function dropdownIn(item) {
+    if (!item)
+      return null
+    if ("shownValue" in item && "saveFailed" in item)
+      return item
+    for (var i = 0; i < item.children.length; i++) {
+      var found = dropdownIn(item.children[i])
+      if (found)
+        return found
+    }
+    return null
+  }
+  // Picks `value` in the view's `key` field as its option list does.
+  function pick(view, key, value) {
+    dropdownIn(view.dropdownFor(key)).select(value)
+  }
+  // Whether the trigger of the view's `key` field shows `value`'s label.
+  function shows(view, key, value) {
+    var field = view.dropdownFor(key)
+    var option = field.options.find(function (o) {
+      return String(o.value) === value
+    })
+    return shell.findText(field, option ? String(option.label) : value) !== null
+  }
+  function refusedA() {
+    shell.sh("touch \"$FOAMY_CALLS.textfail\"", function () {
+      panel(0).open()
+      until(function () {
+        return panel(0).popup.bodyItem && advancedIdle()
+      }, "the popup for the refused picks", refusedB)
+    })
+  }
+  function refusedB() {
+    var view = panel(0).popup.bodyItem
+    view.setTab("Advanced")
+    var size = view.dropdownFor("textSize").currentValue === "16" ? "20" : "16"
+    pick(view, "textSize", size)
+    check(shows(view, "textSize", size), "the picked text size shows while it applies")
+    until(function () {
+      return shell.service.error === "text size refused" && advancedIdle()
+    }, "the refused text size pick", refusedC)
+  }
+  function refusedC() {
+    var view = panel(0).popup.bodyItem
+    check(shows(view, "textSize", view.dropdownFor("textSize").currentValue), "a refused text size shows the size in use again")
+    shell.service.error = ""
+    // The selected display goes away before the helper takes the pick.
+    shell.refusedKept = view.selectedMonitor
+    view.setTab("Display")
+    view.selectMonitor(shell.service.transaction.draft.find(function (m) {
+      return m.name === "DP-1"
+    }).id)
+    shell.sh("rm -f \"$FOAMY_CALLS.textfail\"; cd \"$FOAMY_FAKEBIN\" && cp monitors.json monitors.json.kept && python3 -c 'import json; rows = json.load(open(\"monitors.json\")); json.dump([r for r in rows if r[\"name\"] != \"DP-1\"], open(\"monitors.json\", \"w\"))'", function () {
+      pick(view, "resolution", "1280x720")
+      check(shows(view, "resolution", "1280x720"), "the picked resolution shows while the helper takes it")
+      until(function () {
+        return shell.service.error === "Display is disconnected" && displayIdle()
+      }, "the refused resolution pick", refusedD)
+    })
+  }
+  function refusedD() {
+    var view = panel(0).popup.bodyItem
+    check(shows(view, "resolution", view.dropdownFor("resolution").currentValue), "a refused resolution shows the mode in use again")
+    shell.sh("cd \"$FOAMY_FAKEBIN\" && mv monitors.json.kept monitors.json", function () {
+      shell.service.refresh()
+      until(function () {
+        var back = shell.service.transaction.draft.find(function (m) {
+          return m.name === "DP-1"
+        })
+        return back && back.connected && shell.service.liveMonitors.length === 3 && displayIdle()
+      }, "the display back", refusedE)
+    })
+  }
+  function refusedE() {
+    var view = panel(0).popup.bodyItem
+    view.selectMonitor(shell.refusedKept)
+    view.setTab("Advanced")
+    shell.service.error = ""
+    // A second GDK_SCALE line makes the helper refuse every GTK scale.
+    shell.sh("cd \"$HOME/.config/hypr\" && cp monitors.lua monitors.lua.kept && printf 'hl.env(\"GDK_SCALE\", \"2\")\\n' >> monitors.lua", function () {
+      pick(view, "gtkScale", "3")
+      pick(view, "gtkScale", "4")
+      // The refusal of an earlier pick leaves a newer pick on show.
+      shell.service.commandRefused("gtk-scale", {
+        value: 3
+      })
+      check(shows(view, "gtkScale", "4"), "a refusal of an earlier GTK scale pick keeps the newer pick on show")
+      until(function () {
+        return shell.service.error === "Remove duplicate GDK_SCALE settings from monitors.lua" && displayIdle()
+      }, "the refused GTK scale picks", refusedF)
+    })
+  }
+  function refusedF() {
+    var view = panel(0).popup.bodyItem
+    check(shows(view, "gtkScale", view.dropdownFor("gtkScale").currentValue), "a refused GTK scale shows the scale in use again")
+    shell.sh("cd \"$HOME/.config/hypr\" && mv monitors.lua.kept monitors.lua", function () {
+      shell.service.error = ""
+      shell.service.refresh()
+      until(function () {
+        return shell.service.gtkScale.error === "" && shell.service.gtkScale.value === 2 && displayIdle()
+      }, "the GTK scale readable again", function () {
+        panel(0).close()
+        lifeA()
+      })
+    })
   }
 
   // ---- Per-view demand: popup close, a bar removed (unplug), hot-plug grace ----

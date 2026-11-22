@@ -160,9 +160,14 @@ Singleton {
   // not hide it; a status error (every output gone for a moment, a hyprctl
   // timeout) is stale once a later status run succeeds.
   property string statusError: ""
+  // A helper command or an Advanced job failed and left its setting as it
+  // was. The view shows the setting in use again in the field it came from.
+  signal commandRefused(string action, var payload)
   function commandFailed(message) {
     error = message
     statusError = commandProc.action === "status" ? message : ""
+    if (commandProc.action !== "status")
+      commandRefused(commandProc.action, commandProc.payload)
   }
   function acceptResult(text) {
     if (helperUnavailable)
@@ -219,9 +224,12 @@ Singleton {
     Qt.callLater(root.flushCommands)
   }
 
-  property Process commandProc: Process {
+  // A process that keeps the request it runs, so a failure can name it.
+  component CommandProcess: Process {
     property string action: ""
     property var payload: ({})
+  }
+  property CommandProcess commandProc: CommandProcess {
     stdinEnabled: true
     onStarted: write(JSON.stringify(payload) + "\n")
     stdout: StdioCollector {
@@ -476,12 +484,20 @@ Singleton {
     // gsettings prints the theme in single quotes; bash gets ${theme//\'/},
     // with the quote escaped, to drop them.
     advancedProc.command = advancedDeadline.concat(["bash", "-c", 'theme=$(gsettings get org.gnome.desktop.interface cursor-theme); theme=${theme//\\\'/}; gsettings set org.gnome.desktop.interface cursor-size "$1" && hyprctl setcursor "$theme" "$1"', "cursor-size", String(Number(value))])
+    advancedProc.action = "cursor-size"
+    advancedProc.payload = {
+      value: String(Number(value))
+    }
     advancedProc.running = true
   }
   function setTextSize(value) {
     if (!active || advancedProc.running)
       return
     advancedProc.command = advancedDeadline.concat(["omarchy-display-text-size", String(Number(value))])
+    advancedProc.action = "text-size"
+    advancedProc.payload = {
+      value: String(Number(value))
+    }
     advancedProc.running = true
   }
   // gsettings, hyprctl and the text-size script finish in well under a
@@ -499,7 +515,7 @@ Singleton {
       }
     }
   }
-  property Process advancedProc: Process {
+  property CommandProcess advancedProc: CommandProcess {
     stderr: StdioCollector {
       id: advancedError
       waitForEnd: true
@@ -508,6 +524,7 @@ Singleton {
       if (code) {
         root.error = String(advancedError.text).trim() || "Could not update advanced settings"
         root.advancedFailure = root.error
+        root.commandRefused(action, payload)
       } else {
         root.clearFailure("advancedFailure")
       }
