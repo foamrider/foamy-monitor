@@ -330,7 +330,37 @@ ShellRoot {
     eq(shell.service.wirelessWanted, true, "the Wireless tab wants a scan")
     view.setTab("Display")
     eq(shell.service.wirelessWanted, false, "leaving Wireless releases it")
-    check(view.itemFor("box:1") !== null && view.itemFor("box:1") !== view.itemFor("box:0"), "itemFor finds the display box its key names")
+    check(shell.findText(view.itemFor("box:1"), "2\n" + view.friendlyDisplayName(view.enabledMonitorInfos[1])) !== null, "itemFor finds the display box its key names")
+    // The scene has no disconnected or mirrored display: turn the selected
+    // one off in the draft for an offline row, then on again where it was.
+    shell.keptPosition = {
+      x: view.selected.x,
+      y: view.selected.y
+    }
+    view.toggleDisplay()
+    until(function () {
+      return view.offlineMonitors.length === 1 && displayIdle()
+    }, "the display turned off in the draft", stepFiveOffline)
+  }
+  property var keptPosition: null
+  function stepFiveOffline() {
+    var view = panel(0).popup.bodyItem
+    view.place("box:0")
+    var label = view.friendlyDisplayName(view.offlineMonitors[0]) + " · " + view.tr("Off")
+    check(shell.findText(view.itemFor("offline:0"), label) !== null, "itemFor finds the offline row its key names")
+    view.edit({
+      disabled: false,
+      x: shell.keptPosition.x,
+      y: shell.keptPosition.y
+    })
+    until(function () {
+      return view.offlineMonitors.length === 0 && displayIdle()
+    }, "the display on again in the draft", stepFiveMove)
+  }
+  function stepFiveMove() {
+    var first = panel(0)
+    var view = first.popup.bodyItem
+    eq(shell.service.changeCount, 1, "the display is back as it was: one unsaved change")
     view.place("box:1")
     shell.key(view, "m")
     check(view.moving !== "", "m picks up the display under the cursor")
