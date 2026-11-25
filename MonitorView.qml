@@ -15,7 +15,8 @@ import "Model.js" as Model
 // switchPanel(direction). The plugin has no settings, so no Settings page.
 //
 // Keyboard (one cursor, hover moves it too): j/k or arrows walk the stops,
-// h/l switch tabs and step brightness, Enter activates (opens a dropdown),
+// h/l move along the tab row (one stop; Enter opens the tab) and step
+// brightness, Enter activates (opens a dropdown),
 // m moves the display under the cursor with the arrows (Enter/Esc to drop),
 // w opens Wireless, r refreshes, Ctrl+S saves, Tab/Shift+Tab go
 // to the next bar panel, Esc reverts a running trial or closes.
@@ -121,7 +122,7 @@ PanelKeyCatcher {
     // code). Translate only these known templates; never interpret or
     // translate the detail (%1) itself.
     if (values === undefined) {
-      var templates = ["Please install %1", "Could not read display settings: %1", "Unsupported scale for %1", "Unsupported resolution or refresh rate for %1", "Cast ended (%1)", "Duplicate rules for %1; remove the duplicate before saving", "FluxCast exited with code %1", "Could not start FluxCast: %1"]
+      var templates = ["Please install %1", "Could not read display settings: %1", "Unsupported scale for %1", "Unsupported resolution or refresh rate for %1", "Cast ended (%1)", "Duplicate rules for %1; remove the duplicate before saving", "FluxCast exited with code %1", "Could not start FluxCast: %1", "Could not restore displays: %1", "Could not restore GTK scale: %1", "Configuration changed externally; its backup is in %1"]
       var whole = String(text)
       for (var i = 0; i < templates.length; i++) {
         var parts = templates[i].split("%1")
@@ -130,6 +131,20 @@ PanelKeyCatcher {
       }
     }
     return FoamyI18n.t(text, values)
+  }
+  // The error line: a refused command's error, else the state's. A display
+  // test that reverted also sends its reason and each problem of the revert
+  // apart (errorReason, errorProblems), so each known text is translated on
+  // its own; tool output in them stays as it is.
+  function errorText() {
+    if (MonitorService.error)
+      return tr(MonitorService.error)
+    const error = transaction.error || ""
+    const reason = transaction.errorReason
+    const problems = transaction.errorProblems
+    if (!error || typeof reason !== "string" || !Array.isArray(problems) || !problems.every(p => typeof p === "string"))
+      return tr(error)
+    return [reason].concat(problems).filter(p => p !== "").map(p => tr(p)).join(" ")
   }
   function friendlyDisplayName(monitor) {
     return tr(Model.friendlyMonitorLabel(monitor))
@@ -369,8 +384,8 @@ PanelKeyCatcher {
         field.open()
       return
     }
-    if (key.indexOf("tab:") === 0)
-      setTab(key.slice(4))
+    if (key === "tabs")
+      tabBar.activateCursor()
     else if (key.indexOf("box:") === 0) {
       var monitor = transaction.draft.find(function (m) {
         return m.name === view.boxName(view.stopIndex(key, "box:"))
@@ -431,28 +446,15 @@ PanelKeyCatcher {
       nudge(dx, dy)
       return
     }
-    var key = cursorKey
-    // The tabs are one row: j leaves it into the tab's content, k from the
-    // content returns to the active tab.
-    if (dy > 0 && key.indexOf("tab:") === 0) {
-      cursor.index = Math.min(stops.length - 1, stops.indexOf("tab:Wireless") + 1)
-      return
-    }
-    if (dy < 0 && cursor.index > 0 && stops[cursor.index - 1].indexOf("tab:") === 0) {
-      place("tab:" + activeTab)
-      return
-    }
     if (dy !== 0) {
       cursor.move(dy)
       return
     }
-    if (key === "brightness")
+    if (cursorKey === "tabs")
+      tabBar.moveCursor(dx)
+    else if (cursorKey === "brightness")
       stepBrightness(dx)
-    else if (key.indexOf("tab:") === 0) {
-      var next = tabs[Math.max(0, Math.min(tabs.length - 1, tabs.indexOf(key.slice(4)) + dx))]
-      setTab(next)
-      place("tab:" + next)
-    } else
+    else
       cursor.move(dx)
   }
   onActivateRequested: {
@@ -483,7 +485,10 @@ PanelKeyCatcher {
       return
     if (text === "w" || text === "W") {
       setTab("Wireless")
-      place("tab:Wireless")
+      place("tabs")
+      // A row that had the cursor already keeps its own tab cursor: put it
+      // on the tab w opened, so Enter there does not open another one.
+      tabBar.cursorIndex = tabBar.indexOf("Wireless")
     } else if (text === "r") {
       MonitorService.refresh()
       refreshBrightness()
@@ -595,8 +600,8 @@ PanelKeyCatcher {
   }
 
   function itemFor(key) {
-    if (key.indexOf("tab:") === 0)
-      return tabRepeater.itemAt(tabs.indexOf(key.slice(4)))
+    if (key === "tabs")
+      return tabBar
     if (key.indexOf("box:") === 0)
       return diagram.boxItem(stopIndex(key, "box:"))
     if (key.indexOf("offline:") === 0)
@@ -642,51 +647,23 @@ PanelKeyCatcher {
       showSettings: false     // nothing to set: Omarchy owns the language
     }
 
-    Item {
+    FoamyTabs {
       id: tabBar
       anchors.top: header.bottom
       width: parent.width
-      height: FoamyStyle.controlHeight + FoamyStyle.gap * 2
-      Rectangle {
-        anchors.bottom: parent.bottom
-        width: parent.width
-        height: 1
-        color: FoamyPalette.divider
-      }
-      Row {
-        anchors.left: parent.left
-        anchors.leftMargin: FoamyStyle.padding - FoamyStyle.gap
-        anchors.bottom: parent.bottom
-        spacing: FoamyStyle.gapSmall
-        enabled: !view.testing
-        Repeater {
-          id: tabRepeater
-          model: view.tabs
-          FoamyAction {
-            id: tabButton
-            required property string modelData
-            iconName: ""
-            label: view.tr(modelData)
-            height: FoamyStyle.controlHeight
-            foreground: view.activeTab === modelData ? FoamyPalette.text : FoamyPalette.secondaryText
-            hasCursor: view.hasCursor("tab:" + modelData)
-            onHoveredChanged: if (hovered)
-              view.hover("tab:" + modelData)
-            onClicked: view.setTab(modelData)
-            Rectangle {
-              anchors.left: parent.left
-              anchors.right: parent.right
-              anchors.bottom: parent.bottom
-              anchors.margins: FoamyStyle.gapSmall
-              anchors.bottomMargin: 0
-              height: 2
-              radius: 1
-              color: FoamyPalette.text
-              visible: view.activeTab === tabButton.modelData
-            }
-          }
+      enabled: !view.testing
+      value: view.activeTab
+      model: view.tabs.map(function (tab) {
+        return {
+          value: tab,
+          text: view.tr(tab)
         }
+      })
+      hasCursor: view.hasCursor("tabs")
+      onActivated: function (value) {
+        view.setTab(value)
       }
+      onHovered: view.hover("tabs")
     }
 
     Flickable {
@@ -721,7 +698,7 @@ PanelKeyCatcher {
         Label {
           width: content.inner
           visible: view.actionError !== ""
-          text: view.tr(view.actionError)
+          text: view.errorText()
           color: Commons.Color.urgent
           wrapMode: Text.WordWrap
           Accessible.role: Accessible.AlertMessage

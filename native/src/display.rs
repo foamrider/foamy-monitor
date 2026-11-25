@@ -818,7 +818,7 @@ fn worker(store: &Store, token: &str) -> Result<(), String> {
             state.insert("phase".into(), "idle".into());
             state.insert("base".into(), to_value(&proposed));
             state.insert("draft".into(), to_value(&proposed));
-            state.insert("error".into(), "".into());
+            clear_error(&mut state);
             state.insert("deadline".into(), 0.into());
             if gtk_changed {
                 state.insert(
@@ -831,7 +831,7 @@ fn worker(store: &Store, token: &str) -> Result<(), String> {
         }
         Ok(false)
     })();
-    let mut reason = match trial {
+    let reason = match trial {
         Ok(true) => return Ok(()),
         Ok(false) => String::new(),
         Err(error) => error,
@@ -843,17 +843,18 @@ fn worker(store: &Store, token: &str) -> Result<(), String> {
         state.insert("phase".into(), "reverting".into());
         store.write(&mut state)?;
     }
+    let mut problems = Vec::new();
     revert(
         &plan,
         &snapshot,
         wrote_config,
         applied_gtk,
         &backup,
-        &mut reason,
+        &mut problems,
     );
     let _lock = store.lock("state.lock")?;
     let mut state = store.read()?;
-    end_trial(&mut state, &plan, &snapshot, &reason);
+    end_trial(&mut state, &plan, &snapshot, &reason, &problems);
     store.write(&mut state)
 }
 
@@ -890,14 +891,14 @@ impl Trial {
 
 /// The revert: monitors.lua back to configBefore if the trial wrote it and it
 /// still holds what the trial wrote, the displays back to the snapshot, the
-/// GTK scale back to its base. What failed is appended to `reason`.
+/// GTK scale back to its base. Each thing that failed is added to `problems`.
 fn revert(
     trial: &Trial,
     snapshot: &[Monitor],
     wrote_config: bool,
     applied_gtk: bool,
     backup: &Path,
-    reason: &mut String,
+    problems: &mut Vec<String>,
 ) {
     let config = config_path();
     let restored = (|| -> Result<(), String> {
@@ -907,8 +908,8 @@ fn revert(
                     .map_err(|e| e.to_string())?;
                 reload_config(trial.monitor_changes)?;
             } else {
-                reason.push_str(&format!(
-                    " Configuration changed externally; its backup is in {}",
+                problems.push(format!(
+                    "Configuration changed externally; its backup is in {}",
                     backup.display()
                 ));
             }
@@ -919,20 +920,35 @@ fn revert(
         Ok(())
     })();
     if let Err(error) = restored {
-        reason.push_str(&format!(" Could not restore displays: {error}"));
+        problems.push(format!("Could not restore displays: {error}"));
     }
     if applied_gtk && let Err(error) = restore_gtk_scale(&trial.gtk_base, &trial.environment_before)
     {
-        reason.push_str(&format!(" Could not restore GTK scale: {error}"));
+        problems.push(format!("Could not restore GTK scale: {error}"));
     }
 }
 
-/// The state after a revert: idle on the snapshot, with `reason` as its error.
-fn end_trial(state: &mut State, trial: &Trial, snapshot: &[Monitor], reason: &str) {
+/// The state after a revert: idle on the snapshot. Its error is `reason`
+/// with each of `problems` after it; `errorReason` and `errorProblems` hold
+/// the same texts apart, so the panel can translate each known one.
+fn end_trial(
+    state: &mut State,
+    trial: &Trial,
+    snapshot: &[Monitor],
+    reason: &str,
+    problems: &[String],
+) {
+    let mut error = reason.to_owned();
+    for problem in problems {
+        error.push(' ');
+        error.push_str(problem);
+    }
     state.insert("phase".into(), "idle".into());
     state.insert("base".into(), to_value(snapshot));
     state.insert("draft".into(), to_value(snapshot));
-    state.insert("error".into(), py::strip(reason).into());
+    state.insert("error".into(), py::strip(&error).into());
+    state.insert("errorReason".into(), reason.into());
+    state.insert("errorProblems".into(), problems.into());
     state.insert("deadline".into(), 0.into());
     if trial.gtk_changed() {
         state.insert(
@@ -940,6 +956,13 @@ fn end_trial(state: &mut State, trial: &Trial, snapshot: &[Monitor], reason: &st
             json!({"base": trial.gtk_base, "value": trial.gtk_base}),
         );
     }
+}
+
+/// No error: the parts of a trial's error go with it (see end_trial).
+fn clear_error(state: &mut State) {
+    state.insert("error".into(), "".into());
+    state.remove("errorReason");
+    state.remove("errorProblems");
 }
 
 /// Whether the trial's detached worker still runs: `workerPid` names a
@@ -979,11 +1002,11 @@ fn recover_dead_trial(store: &Store, state: &mut State) -> Result<(), String> {
         return Ok(());
     };
     let mut trial = Trial::of(state);
-    let mut problems = String::new();
+    let mut problems = Vec::new();
     let snapshot =
         monitors(get(state, "snapshot"), "The trial's snapshot").unwrap_or_else(|error| {
             // Nothing to roll back to: the next status reads the outputs as they are.
-            problems.push_str(&format!(" {error}"));
+            problems.push(error);
             trial.monitor_changes = false;
             Vec::new()
         });
@@ -1001,11 +1024,11 @@ fn recover_dead_trial(store: &Store, state: &mut State) -> Result<(), String> {
         &mut problems,
     );
     let reason = if problems.is_empty() {
-        "The display test stopped unexpectedly. The previous settings were restored.".to_owned()
+        "The display test stopped unexpectedly. The previous settings were restored."
     } else {
-        format!("The display test stopped unexpectedly.{problems}")
+        "The display test stopped unexpectedly."
     };
-    end_trial(state, &trial, &snapshot, &reason);
+    end_trial(state, &trial, &snapshot, reason, &problems);
     store.write(state)
 }
 
@@ -1064,7 +1087,7 @@ fn patch(state: &mut State, request: &Value) -> Result<(), String> {
         return Err("Keep at least one display enabled".into());
     }
     state.insert("draft".into(), to_value(&draft));
-    state.insert("error".into(), "".into());
+    clear_error(state);
     Ok(())
 }
 
@@ -1210,12 +1233,12 @@ fn command(store: &Store, action: &str, request: &Value) -> Result<Value, String
                 .ok_or("The state's GTK scale is invalid")?;
             gtk.insert("value".into(), value);
             state.insert("gtkScale".into(), Value::Object(gtk));
-            state.insert("error".into(), "".into());
+            clear_error(&mut state);
         }
         "discard" => {
             state.insert("base".into(), to_value(&live));
             state.insert("draft".into(), to_value(&live));
-            state.insert("error".into(), "".into());
+            clear_error(&mut state);
             state.insert("gtkScale".into(), default_gtk);
         }
         "apply" => {
@@ -1286,7 +1309,7 @@ fn command(store: &Store, action: &str, request: &Value) -> Result<Value, String
             state.insert("token".into(), token.clone().into());
             state.insert("snapshot".into(), to_value(&live));
             state.insert("decision".into(), "".into());
-            state.insert("error".into(), "".into());
+            clear_error(&mut state);
             state.insert("configBefore".into(), before.into());
             state.insert("configAfter".into(), after.into());
             state.insert("monitorChanges".into(), (!edited.is_empty()).into());

@@ -308,7 +308,8 @@ function viewStops(tab, testing, counts) {
   var list = []
   function add(prefix, n) { for (var i = 0; i < (n || 0); i++) list.push(prefix + i) }
   if (!testing) {
-    list.push("tab:Display", "tab:Advanced", "tab:Wireless")
+    // The tab row is one stop; FoamyTabs moves between its tabs.
+    list.push("tabs")
     if (tab === "Display") {
       add("box:", c.boxes)
       list.push("identify")
