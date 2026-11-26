@@ -14,7 +14,7 @@ How the lists are made:
 
 - `bin/aarch64/foamy-monitor-helper`: sha256 `1c0a8079668312f741c12b00aa2be9c16335afef33aa17d3f53418202b045a32`
 - `bin/x86_64/foamy-monitor-helper`: sha256 `4873ed253dd4e417d9250ad98e550ae828bc2450d98a402a1474d1c4299d3cd7`
-- `native/native.pin`: source `799958783ed0662e2fffe09f2cdac71aa72867265114f5e116b8961b91ab9f49`, toolchain 1.99.1
+- `native/native.pin`: source `d1cc28932458faaa8044c69a0cbdcc9d2790c3dfdd53d3fdb3518ac4a4fd2cb7`, toolchain 1.99.1
 
 ### Crates linked into `foamy-monitor-helper`
 
