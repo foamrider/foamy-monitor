@@ -126,5 +126,12 @@
   "Arrows move %1. Enter or Esc to finish.": "Arrows move %1. Enter or Esc to finish.",
   "Press M to move it with the arrow keys": "Press M to move it with the arrow keys",
   "Settings": "Settings",
-  "Retry": "Retry"
+  "Retry": "Retry",
+  "Clipboard paste timed out. Copy the text again.": "Clipboard paste timed out. Copy the text again.",
+  "Clipboard text is too large or contains invalid characters.": "Clipboard text is too large or contains invalid characters.",
+  "Could not paste clipboard text. Copy plain text and try again.": "Could not paste clipboard text. Copy plain text and try again.",
+  "That value isn't allowed.": "That value isn't allowed.",
+  "Settings can't be saved: this widget has no bar entry.": "Settings can't be saved: this widget has no bar entry.",
+  "The saved list in shell.json isn't valid, so it wasn't replaced.": "The saved list in shell.json isn't valid, so it wasn't replaced.",
+  "Couldn't save the setting.": "Couldn't save the setting."
 }

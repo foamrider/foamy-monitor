@@ -114,7 +114,10 @@ Singleton {
   }
 
   // Nothing runs without a panel (preview mocks set the state directly).
-  function enqueue(action, payload) {
+  // `serial` is the dropdown pick a request comes from (FoamyDropdown's
+  // changed(value, serial)), 0 for none, and `requester` the view that made
+  // it: every bar's view counts its own picks. A refusal hands both back.
+  function enqueue(action, payload, serial, requester) {
     if (!active || helperUnavailable)
       return
     if (action === "status") {
@@ -129,7 +132,9 @@ Singleton {
     commands = commands.concat([
       {
         action: action,
-        payload: payload || {}
+        payload: payload || {},
+        serial: serial || 0,
+        requester: requester || null
       }
     ])
     runNext()
@@ -143,6 +148,8 @@ Singleton {
     statusPending = false
     commandProc.action = next.action
     commandProc.payload = next.payload
+    commandProc.serial = next.serial
+    commandProc.requester = next.requester
     commandProc.command = helper([next.action])
     if (next.action === "status")
       statusRuns++
@@ -163,19 +170,21 @@ Singleton {
   // timeout) is stale once a later status run succeeds.
   property string statusError: ""
   // A helper command or an Advanced job failed, or an Advanced job was not
-  // started, and left its setting as it was. The view shows the setting in
-  // use again in the field it came from.
-  signal commandRefused(string action, var payload)
-  function commandFailed(message, action, payload) {
+  // started, and left its setting as it was. The view that asked
+  // (`requester`) shows the setting in use again in the field the pick
+  // `serial` came from.
+  signal commandRefused(string action, var payload, int serial, var requester)
+  function commandFailed(message, action, payload, serial, requester) {
     error = message
     statusError = action === "status" ? message : ""
     if (action !== "status")
-      commandRefused(action, payload)
+      commandRefused(action, payload, serial, requester)
   }
-  // `action` and `payload` are the request this answer is for. An answer held
-  // during a drag is applied after the drop, when commandProc may already
-  // run another request (the dropped box's patch, a queued command).
-  function acceptResult(text, action, payload) {
+  // `action`, `payload`, `serial` and `requester` are the request this
+  // answer is for. An answer held during a drag is applied after the drop,
+  // when commandProc may already run another request (the dropped box's
+  // patch, a queued command).
+  function acceptResult(text, action, payload, serial, requester) {
     if (helperUnavailable)
       return
     if (arrangementDragActive) {
@@ -183,7 +192,9 @@ Singleton {
         {
           text: text,
           action: action,
-          payload: payload
+          payload: payload,
+          serial: serial,
+          requester: requester
         }
       ])
       return
@@ -191,7 +202,7 @@ Singleton {
     try {
       var result = JSON.parse(text)
       if (!result.ok) {
-        commandFailed(result.error, action, payload)
+        commandFailed(result.error, action, payload, serial, requester)
         return
       }
       // A clean draft alone is not proof of a save: wait for Keep to finish successfully.
@@ -217,7 +228,7 @@ Singleton {
       if (fileRevision > (transaction.revision || 0))
         statusSoon()
     } catch (e) {
-      commandFailed("Could not read display settings: " + e, action, payload)
+      commandFailed("Could not read display settings: " + e, action, payload, serial, requester)
     }
   }
   function flushCommands() {
@@ -232,7 +243,7 @@ Singleton {
     if (held.length)
       Qt.callLater(function () {
         held.forEach(function (answer) {
-          root.acceptResult(answer.text, answer.action, answer.payload)
+          root.acceptResult(answer.text, answer.action, answer.payload, answer.serial, answer.requester)
         })
       })
     Qt.callLater(root.flushCommands)
@@ -242,13 +253,15 @@ Singleton {
   component CommandProcess: Process {
     property string action: ""
     property var payload: ({})
+    property int serial: 0
+    property var requester: null
   }
   property CommandProcess commandProc: CommandProcess {
     stdinEnabled: true
     onStarted: write(JSON.stringify(payload) + "\n")
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.acceptResult(text, root.commandProc.action, root.commandProc.payload)
+      onStreamFinished: root.acceptResult(text, root.commandProc.action, root.commandProc.payload, root.commandProc.serial, root.commandProc.requester)
     }
     stderr: StdioCollector {
       id: commandError
@@ -492,7 +505,8 @@ Singleton {
   // ---- Advanced: text size, cursor size ------------------------------------
   property int cursorSize: 24
   readonly property bool advancedBusy: advancedProc.running
-  function setCursorSize(value) {
+  // `serial` and `requester` are the dropdown pick, as for enqueue().
+  function setCursorSize(value, serial, requester) {
     if (!active)
       return
     // One job at a time. A pick from a list opened before the running job
@@ -500,7 +514,7 @@ Singleton {
     if (advancedProc.running) {
       commandRefused("cursor-size", {
         value: String(Number(value))
-      })
+      }, serial || 0, requester || null)
       return
     }
     // gsettings prints the theme in single quotes; bash gets ${theme//\'/},
@@ -510,15 +524,17 @@ Singleton {
     advancedProc.payload = {
       value: String(Number(value))
     }
+    advancedProc.serial = serial || 0
+    advancedProc.requester = requester || null
     advancedProc.running = true
   }
-  function setTextSize(value) {
+  function setTextSize(value, serial, requester) {
     if (!active)
       return
     if (advancedProc.running) {
       commandRefused("text-size", {
         value: String(Number(value))
-      })
+      }, serial || 0, requester || null)
       return
     }
     advancedProc.command = advancedDeadline.concat(["omarchy-display-text-size", String(Number(value))])
@@ -526,6 +542,8 @@ Singleton {
     advancedProc.payload = {
       value: String(Number(value))
     }
+    advancedProc.serial = serial || 0
+    advancedProc.requester = requester || null
     advancedProc.running = true
   }
   // gsettings, hyprctl and the text-size script finish in well under a
@@ -552,7 +570,7 @@ Singleton {
       if (code) {
         root.error = String(advancedError.text).trim() || "Could not update advanced settings"
         root.advancedFailure = root.error
-        root.commandRefused(action, payload)
+        root.commandRefused(action, payload, serial, requester)
       } else {
         root.clearFailure("advancedFailure")
       }

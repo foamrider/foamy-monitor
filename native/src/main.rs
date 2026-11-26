@@ -26,13 +26,13 @@
 //!   `phase` idle|applying|testing|saving|reverting, `base`, `draft`,
 //!   `error` (after a reverted trial also in parts, `errorReason` and
 //!   `errorProblems`: see below), `revision` +1 per write, `gtkScale`, and
-//!   during a trial
-//!   `token`, `decision`, `deadline` (epoch seconds), `snapshot`,
-//!   `configBefore`, `configAfter`, `monitorChanges`,
-//!   `gtkEnvironmentBefore`, `workerPid`; the first four of those trial
-//!   fields are not shown in replies), `monitors.lua.backup` (0600, written
-//!   before Keep saves), and the `flock` files `state.lock` (every action
-//!   and worker step) and `trial.lock` (the worker).
+//!   during a trial `token`, `decision`, `deadline` (epoch seconds),
+//!   `snapshot`, `configBefore`, `configAfter`, `monitorChanges`,
+//!   `gtkEnvironmentBefore`, `workerPid`; of those, `snapshot`,
+//!   `configBefore`, `configAfter` and `gtkEnvironmentBefore` are not shown
+//!   in replies), `monitors.lua.backup` (0600, written before Keep saves),
+//!   and the `flock` files `state.lock` (every action and worker step) and
+//!   `trial.lock` (the worker).
 //! - Displays: `hyprctl monitors all -j` (each tool run has a 5 s deadline,
 //!   output capped at 8 MiB; a nonzero exit is an error with its stripped
 //!   stderr, else stdout, else "<tool> failed (<code>)"). Entries get

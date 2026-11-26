@@ -126,5 +126,12 @@
   "Arrows move %1. Enter or Esc to finish.": "Piltastene flytter %1. Enter eller Esc for å avslutte.",
   "Press M to move it with the arrow keys": "Trykk M for å flytte den med piltastene",
   "Settings": "Innstillinger",
-  "Retry": "Prøv igjen"
+  "Retry": "Prøv igjen",
+  "Clipboard paste timed out. Copy the text again.": "Innliming fra utklippstavlen tok for lang tid. Kopier teksten på nytt.",
+  "Clipboard text is too large or contains invalid characters.": "Teksten på utklippstavlen er for stor eller inneholder ugyldige tegn.",
+  "Could not paste clipboard text. Copy plain text and try again.": "Kunne ikke lime inn fra utklippstavlen. Kopier ren tekst og prøv igjen.",
+  "That value isn't allowed.": "Den verdien er ikke tillatt.",
+  "Settings can't be saved: this widget has no bar entry.": "Innstillingene kan ikke lagres: modulen har ingen oppføring i linjen.",
+  "The saved list in shell.json isn't valid, so it wasn't replaced.": "Den lagrede listen i shell.json er ugyldig, så den ble ikke erstattet.",
+  "Couldn't save the setting.": "Kunne ikke lagre innstillingen."
 }
