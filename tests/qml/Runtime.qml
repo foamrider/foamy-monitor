@@ -664,7 +664,14 @@ ShellRoot {
     check(shows(view, "cursorSize", view.dropdownFor("cursorSize").currentValue), "a refused cursor size shows the size in use again")
     dropdownIn(view.dropdownFor("cursorSize")).pickHoldMs = 10000
     shell.service.error = ""
-    shell.sh("rm -f \"$FOAMY_CALLS.cursorfail\"", refusedA)
+    shell.sh("rm -f \"$FOAMY_CALLS.cursorfail\"", function () {
+      // A job from no pick, so the refused text size below follows a job
+      // that carried neither a serial nor a view. The cursor size job
+      // carried this bar's view and serial 2, which the text size pick has
+      // too.
+      shell.service.setCursorSize(24)
+      until(advancedIdle, "a cursor size from no pick", refusedA)
+    })
   }
   function refusedA() {
     shell.sh("touch \"$FOAMY_CALLS.textfail\"", function () {
