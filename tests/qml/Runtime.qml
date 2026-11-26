@@ -672,20 +672,8 @@ ShellRoot {
       return m.name === "DP-1"
     }).id)
     shell.sh("rm -f \"$FOAMY_CALLS.textfail\"; cd \"$FOAMY_FAKEBIN\" && cp monitors.json monitors.json.kept && python3 -c 'import json; rows = json.load(open(\"monitors.json\")); json.dump([r for r in rows if r[\"name\"] != \"DP-1\"], open(\"monitors.json\", \"w\"))'", function () {
-      var serial = pick(view, "resolution", "1280x720")
+      pick(view, "resolution", "1280x720")
       check(shows(view, "resolution", "1280x720"), "the picked resolution shows while the helper takes it")
-      // Another display's refused pick of the same mode is not this pick,
-      // even with its serial: every bar's view counts its own picks.
-      shell.service.commandRefused("patch", {
-        id: shell.service.transaction.draft.find(function (m) {
-          return m.name !== "DP-1"
-        }).id,
-        changes: {
-          width: 1280,
-          height: 720
-        }
-      }, serial)
-      check(shows(view, "resolution", "1280x720"), "a refused pick of another display leaves this display's pick on show")
       until(function () {
         return shell.service.error === "Display is disconnected" && displayIdle()
       }, "the refused resolution pick", refusedD)
@@ -749,37 +737,67 @@ ShellRoot {
       }, "the display back", refusedE)
     })
   }
-  // Quick GTK scale picks 3, 4, 3 that the helper refuses one by one: each
-  // refusal ends only its own pick, so the last pick, of the same scale as
-  // the first, stays on show until its own refusal. With no display (an
-  // empty monitors.json) the helper refuses every request, so a status run
-  // between them fails too instead of changing the scale in use, which
-  // would end the pick by itself.
+  // Quick GTK scale picks that the helper refuses one by one. With no
+  // display (an empty monitors.json) the helper refuses every request, so a
+  // status run between them fails too instead of changing the scale in use,
+  // which would end a pick by itself.
   property var gtkShown: []
-  // What the GTK scale field shows after each refusal. Qt runs the view's
-  // QML handler of a signal before the functions joined with connect().
+  // What this bar's GTK scale field shows after each refusal. Qt runs the
+  // view's QML handler of a signal before the functions joined with
+  // connect().
   function recordGtkShown(action) {
     if (action === "gtk-scale")
       shell.gtkShown = shell.gtkShown.concat([dropdownIn(panel(0).popup.bodyItem.dropdownFor("gtkScale")).shownValue])
+  }
+  // The GTK scale picks of the first two bars stay on show until a refusal
+  // ends them, however slow the runs.
+  function holdGtkPicks(ms) {
+    for (var i = 0; i < 2; i++)
+      dropdownIn(panel(i).popup.bodyItem.dropdownFor("gtkScale")).pickHoldMs = ms
   }
   function refusedE() {
     var view = panel(0).popup.bodyItem
     view.selectMonitor(shell.refusedKept)
     view.setTab("Advanced")
     shell.service.error = ""
+    // Another bar's popup is open as well.
+    panel(1).open()
+    panel(1).popup.bodyItem.setTab("Advanced")
+    holdGtkPicks(600000)
     shell.sh("cd \"$FOAMY_FAKEBIN\" && cp monitors.json monitors.json.kept && printf '[]' > monitors.json", function () {
       shell.service.commandRefused.connect(shell.recordGtkShown)
-      pick(view, "gtkScale", "3")
-      pick(view, "gtkScale", "4")
-      pick(view, "gtkScale", "3")
+      // Every bar's view counts its own picks: the other bar's first GTK
+      // scale pick has the serial of this bar's first one, and its refusal
+      // comes first.
+      var other = pick(panel(1).popup.bodyItem, "gtkScale", "3")
+      var mine = pick(view, "gtkScale", "4")
+      eq(mine, other, "the first GTK scale pick on two bars has the same serial")
       until(function () {
-        return shell.gtkShown.length === 3 && displayIdle()
-      }, "the refused GTK scale picks", refusedF)
+        return shell.gtkShown.length === 2 && displayIdle()
+      }, "the refused GTK scale picks of two bars", refusedE2)
     })
+  }
+  function refusedE2() {
+    var view = panel(0).popup.bodyItem
+    var inUse = view.dropdownFor("gtkScale").currentValue
+    eq(shell.gtkShown.join(" "), "4 " + inUse, "the GTK scale on show here after the other bar's refusal, then this bar's")
+    check(shows(panel(1).popup.bodyItem, "gtkScale", inUse), "the other bar's refused GTK scale shows the scale in use again there")
+    panel(1).close()
+    // Quick picks 3, 4, 3 on one bar: each refusal ends only its own pick, so
+    // the last pick, of the same scale as the first, stays on show until its
+    // own refusal.
+    shell.gtkShown = []
+    pick(view, "gtkScale", "3")
+    pick(view, "gtkScale", "4")
+    pick(view, "gtkScale", "3")
+    until(function () {
+      return shell.gtkShown.length === 3 && displayIdle()
+    }, "the refused GTK scale picks", refusedF)
   }
   function refusedF() {
     var view = panel(0).popup.bodyItem
     shell.service.commandRefused.disconnect(shell.recordGtkShown)
+    holdGtkPicks(10000)
     var inUse = view.dropdownFor("gtkScale").currentValue
     eq(shell.gtkShown.join(" "), "3 3 " + inUse, "the GTK scale on show after each refusal of the picks 3, 4, 3")
     check(shows(view, "gtkScale", inUse), "a refused GTK scale shows the scale in use again")

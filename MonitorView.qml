@@ -262,13 +262,13 @@ PanelKeyCatcher {
       pickRefused("patch", {
         id: monitor.id,
         changes: changes
-      }, serial)
+      }, serial, view)
       return
     }
     MonitorService.enqueue("patch", {
       id: monitor.id,
       changes: changes
-    }, serial)
+    }, serial, view)
   }
   function setResolution(value, serial) {
     var size = value.split("x").map(Number)
@@ -541,21 +541,20 @@ PanelKeyCatcher {
     function onTransactionChanged() {
       view.defer(view.ensureSelection)
     }
-    function onCommandRefused(action, payload, serial) {
-      view.pickRefused(action, payload, serial)
+    function onCommandRefused(action, payload, serial, requester) {
+      view.pickRefused(action, payload, serial, requester)
     }
   }
   // A refused pick leaves the field's value as it was, so its dropdown would
   // show the pick for its hold time. Only the refused pick, in the field it
   // came from, shows the setting in use again (see Field.saveFailed): a
-  // newer pick there, even of the same value, waits for its own answer. A
-  // resolution pick also sends its refresh rate and scale; turning a display
-  // off or on also sends mirrorOf, but only a mode pick sends it without
-  // `disabled`. The display fields show the selected display: another
-  // display's refused patch leaves them alone, even with the serial of their
-  // pick (another bar's view counts its own picks).
-  function pickRefused(action, payload, serial) {
-    if (action === "patch" && payload.id !== view.selectedMonitor)
+  // newer pick there, even of the same value, waits for its own answer.
+  // Every bar's view counts its own picks, so a refusal of another view's
+  // pick (`requester`) leaves this view alone. A resolution pick also sends
+  // its refresh rate and scale; turning a display off or on also sends
+  // mirrorOf, but only a mode pick sends it without `disabled`.
+  function pickRefused(action, payload, serial, requester) {
+    if (requester !== view)
       return
     var changes = action === "patch" ? payload.changes : {}
     if (action === "text-size")
@@ -963,7 +962,7 @@ PanelKeyCatcher {
             currentValue: String(Style.font.baseSize)
             enabled: !MonitorService.advancedBusy
             onChanged: function (value, serial) {
-              MonitorService.setTextSize(value, serial)
+              MonitorService.setTextSize(value, serial, view)
             }
           }
           Field {
@@ -975,7 +974,7 @@ PanelKeyCatcher {
             currentValue: String(MonitorService.cursorSize)
             enabled: !MonitorService.advancedBusy
             onChanged: function (value, serial) {
-              MonitorService.setCursorSize(value, serial)
+              MonitorService.setCursorSize(value, serial, view)
             }
           }
           Field {
@@ -990,7 +989,7 @@ PanelKeyCatcher {
             onChanged: function (value, serial) {
               MonitorService.enqueue("gtk-scale", {
                 value: Number(value)
-              }, serial)
+              }, serial, view)
             }
           }
           Label {
