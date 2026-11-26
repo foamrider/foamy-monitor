@@ -602,7 +602,7 @@ ShellRoot {
     pick(view, "textSize", view.dropdownFor("textSize").currentValue === "16" ? "20" : "16")
     check(shows(view, "textSize", view.dropdownFor("textSize").currentValue), "a text size picked while another Advanced job runs shows the size in use again")
     shell.sh("rm -f \"$FOAMY_CALLS.texthold\"", function () {
-      until(advancedIdle, "the held text size job's end", refusedA)
+      until(advancedIdle, "the held text size job's end", cursorA)
     })
   }
 
@@ -642,6 +642,29 @@ ShellRoot {
       return String(o.value) === value
     })
     return shell.findText(field, option ? String(option.label) : value) !== null
+  }
+  // The fake gsettings refuses a cursor size while $FOAMY_CALLS.cursorfail
+  // exists. The Advanced job before this one, the held text size, came from
+  // no pick, so a refusal that kept that job's serial would not end the pick.
+  function cursorA() {
+    var view = panel(0).popup.bodyItem
+    // The pick then stays on show until a refusal ends it, however slow the run.
+    dropdownIn(view.dropdownFor("cursorSize")).pickHoldMs = 600000
+    shell.sh("touch \"$FOAMY_CALLS.cursorfail\"", function () {
+      var size = view.dropdownFor("cursorSize").currentValue === "36" ? "48" : "36"
+      pick(view, "cursorSize", size)
+      check(shows(view, "cursorSize", size), "the picked cursor size shows while it applies")
+      until(function () {
+        return shell.service.error === "cursor size refused" && advancedIdle()
+      }, "the refused cursor size pick", cursorB)
+    })
+  }
+  function cursorB() {
+    var view = panel(0).popup.bodyItem
+    check(shows(view, "cursorSize", view.dropdownFor("cursorSize").currentValue), "a refused cursor size shows the size in use again")
+    dropdownIn(view.dropdownFor("cursorSize")).pickHoldMs = 10000
+    shell.service.error = ""
+    shell.sh("rm -f \"$FOAMY_CALLS.cursorfail\"", refusedA)
   }
   function refusedA() {
     shell.sh("touch \"$FOAMY_CALLS.textfail\"", function () {

@@ -100,7 +100,14 @@ if any(a.endswith("%") for a in sys.argv[1:]):
     sys.exit(0)
 print(open(level).read().strip() if os.path.exists(level) else "%d" % BRIGHTNESS)
 """,
-        "gsettings": LOGGER + 'print("24" if "cursor-size" in sys.argv else "\'Adwaita\'")\n',
+        "gsettings": LOGGER
+        + """
+# A cursor size the desktop refuses while $FOAMY_CALLS.cursorfail exists.
+if sys.argv[1:2] == ["set"] and os.path.exists(os.environ["FOAMY_CALLS"] + ".cursorfail"):
+    sys.stderr.write("cursor size refused\\n")
+    sys.exit(1)
+print("24" if "cursor-size" in sys.argv else "'Adwaita'")
+""",
         "omarchy-display-text-size": LOGGER
         + """
 # A job that runs until the test removes $FOAMY_CALLS.texthold.
