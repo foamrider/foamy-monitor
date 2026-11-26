@@ -622,9 +622,18 @@ ShellRoot {
     }
     return null
   }
-  // Picks `value` in the view's `key` field as its option list does.
+  // Picks `value` in the view's `key` field as its option list does, and
+  // returns the pick's serial (the one its changed(value, serial) carries).
   function pick(view, key, value) {
-    dropdownIn(view.dropdownFor(key)).select(value)
+    var dropdown = dropdownIn(view.dropdownFor(key))
+    var serial = 0
+    var take = function (picked, pickSerial) {
+      serial = pickSerial
+    }
+    dropdown.changed.connect(take)
+    dropdown.select(value)
+    dropdown.changed.disconnect(take)
+    return serial
   }
   // Whether the trigger of the view's `key` field shows `value`'s label.
   function shows(view, key, value) {
@@ -663,9 +672,10 @@ ShellRoot {
       return m.name === "DP-1"
     }).id)
     shell.sh("rm -f \"$FOAMY_CALLS.textfail\"; cd \"$FOAMY_FAKEBIN\" && cp monitors.json monitors.json.kept && python3 -c 'import json; rows = json.load(open(\"monitors.json\")); json.dump([r for r in rows if r[\"name\"] != \"DP-1\"], open(\"monitors.json\", \"w\"))'", function () {
-      pick(view, "resolution", "1280x720")
+      var serial = pick(view, "resolution", "1280x720")
       check(shows(view, "resolution", "1280x720"), "the picked resolution shows while the helper takes it")
-      // Another display's refused pick of the same mode is not this pick.
+      // Another display's refused pick of the same mode is not this pick,
+      // even with its serial: every bar's view counts its own picks.
       shell.service.commandRefused("patch", {
         id: shell.service.transaction.draft.find(function (m) {
           return m.name !== "DP-1"
@@ -674,7 +684,7 @@ ShellRoot {
           width: 1280,
           height: 720
         }
-      })
+      }, serial)
       check(shows(view, "resolution", "1280x720"), "a refused pick of another display leaves this display's pick on show")
       until(function () {
         return shell.service.error === "Display is disconnected" && displayIdle()
@@ -739,34 +749,46 @@ ShellRoot {
       }, "the display back", refusedE)
     })
   }
+  // Quick GTK scale picks 3, 4, 3 that the helper refuses one by one: each
+  // refusal ends only its own pick, so the last pick, of the same scale as
+  // the first, stays on show until its own refusal. With no display (an
+  // empty monitors.json) the helper refuses every request, so a status run
+  // between them fails too instead of changing the scale in use, which
+  // would end the pick by itself.
+  property var gtkShown: []
+  // What the GTK scale field shows after each refusal. Qt runs the view's
+  // QML handler of a signal before the functions joined with connect().
+  function recordGtkShown(action) {
+    if (action === "gtk-scale")
+      shell.gtkShown = shell.gtkShown.concat([dropdownIn(panel(0).popup.bodyItem.dropdownFor("gtkScale")).shownValue])
+  }
   function refusedE() {
     var view = panel(0).popup.bodyItem
     view.selectMonitor(shell.refusedKept)
     view.setTab("Advanced")
     shell.service.error = ""
-    // A second GDK_SCALE line makes the helper refuse every GTK scale.
-    shell.sh("cd \"$HOME/.config/hypr\" && cp monitors.lua monitors.lua.kept && printf 'hl.env(\"GDK_SCALE\", \"2\")\\n' >> monitors.lua", function () {
+    shell.sh("cd \"$FOAMY_FAKEBIN\" && cp monitors.json monitors.json.kept && printf '[]' > monitors.json", function () {
+      shell.service.commandRefused.connect(shell.recordGtkShown)
       pick(view, "gtkScale", "3")
       pick(view, "gtkScale", "4")
-      // The refusal of an earlier pick leaves a newer pick on show.
-      shell.service.commandRefused("gtk-scale", {
-        value: 3
-      })
-      check(shows(view, "gtkScale", "4"), "a refusal of an earlier GTK scale pick keeps the newer pick on show")
+      pick(view, "gtkScale", "3")
       until(function () {
-        return shell.service.error === "Remove duplicate GDK_SCALE settings from monitors.lua" && displayIdle()
+        return shell.gtkShown.length === 3 && displayIdle()
       }, "the refused GTK scale picks", refusedF)
     })
   }
   function refusedF() {
     var view = panel(0).popup.bodyItem
-    check(shows(view, "gtkScale", view.dropdownFor("gtkScale").currentValue), "a refused GTK scale shows the scale in use again")
-    shell.sh("cd \"$HOME/.config/hypr\" && mv monitors.lua.kept monitors.lua", function () {
+    shell.service.commandRefused.disconnect(shell.recordGtkShown)
+    var inUse = view.dropdownFor("gtkScale").currentValue
+    eq(shell.gtkShown.join(" "), "3 3 " + inUse, "the GTK scale on show after each refusal of the picks 3, 4, 3")
+    check(shows(view, "gtkScale", inUse), "a refused GTK scale shows the scale in use again")
+    shell.sh("cd \"$FOAMY_FAKEBIN\" && mv monitors.json.kept monitors.json", function () {
       shell.service.error = ""
       shell.service.refresh()
       until(function () {
-        return shell.service.gtkScale.error === "" && shell.service.gtkScale.value === 2 && displayIdle()
-      }, "the GTK scale readable again", function () {
+        return shell.service.statusError === "" && displayIdle()
+      }, "the displays readable again", function () {
         panel(0).close()
         lifeA()
       })

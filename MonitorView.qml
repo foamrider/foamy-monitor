@@ -251,7 +251,8 @@ PanelKeyCatcher {
     if (brightnessTarget && host.opened)
       MonitorService.readBrightness(brightnessTarget)
   }
-  function edit(changes, monitor) {
+  // `serial` is the dropdown pick the change comes from, if any.
+  function edit(changes, monitor, serial) {
     monitor = monitor || selected
     if (!monitor)
       return
@@ -261,15 +262,15 @@ PanelKeyCatcher {
       pickRefused("patch", {
         id: monitor.id,
         changes: changes
-      })
+      }, serial)
       return
     }
     MonitorService.enqueue("patch", {
       id: monitor.id,
       changes: changes
-    })
+    }, serial)
   }
-  function setResolution(value) {
+  function setResolution(value, serial) {
     var size = value.split("x").map(Number)
     var rates = Model.refreshRatesFor(selected.availableModes, size[0], size[1])
     var scale = Model.validScale(selected.scale, size[0], size[1]) ? selected.scale : 1
@@ -278,7 +279,7 @@ PanelKeyCatcher {
       height: size[1],
       refreshRate: Model.nearestRate(rates, selected.refreshRate),
       scale: scale
-    })
+    }, selected, serial)
   }
   function rightEdge(exclude) {
     return enabledMonitorInfos.filter(function (m) {
@@ -300,7 +301,7 @@ PanelKeyCatcher {
     }
     edit(values)
   }
-  function setMirror(value) {
+  function setMirror(value, serial) {
     if (!selected)
       return
     var values = {
@@ -310,7 +311,7 @@ PanelKeyCatcher {
       values.x = rightEdge(selectedMonitor)
       values.y = 0
     }
-    edit(values)
+    edit(values, selected, serial)
   }
   function moveMonitor(name, x, y) {
     var monitor = transaction.draft.find(function (m) {
@@ -540,37 +541,39 @@ PanelKeyCatcher {
     function onTransactionChanged() {
       view.defer(view.ensureSelection)
     }
-    function onCommandRefused(action, payload) {
-      view.pickRefused(action, payload)
+    function onCommandRefused(action, payload, serial) {
+      view.pickRefused(action, payload, serial)
     }
   }
   // A refused pick leaves the field's value as it was, so its dropdown would
-  // show the pick for its hold time. Only the field the refused value came
-  // from shows the setting in use again (see Field.saveFailed). A resolution
-  // pick also sends its refresh rate and scale; turning a display off or on
-  // also sends mirrorOf, but only a mode pick sends it without `disabled`.
-  // The display fields show the selected display: another display's refused
-  // patch leaves them alone, even with the same value.
-  function pickRefused(action, payload) {
+  // show the pick for its hold time. Only the refused pick, in the field it
+  // came from, shows the setting in use again (see Field.saveFailed): a
+  // newer pick there, even of the same value, waits for its own answer. A
+  // resolution pick also sends its refresh rate and scale; turning a display
+  // off or on also sends mirrorOf, but only a mode pick sends it without
+  // `disabled`. The display fields show the selected display: another
+  // display's refused patch leaves them alone, even with the serial of their
+  // pick (another bar's view counts its own picks).
+  function pickRefused(action, payload, serial) {
     if (action === "patch" && payload.id !== view.selectedMonitor)
       return
     var changes = action === "patch" ? payload.changes : {}
     if (action === "text-size")
-      textSizeField.saveFailed(payload.value)
+      textSizeField.saveFailed(serial)
     else if (action === "cursor-size")
-      cursorSizeField.saveFailed(payload.value)
+      cursorSizeField.saveFailed(serial)
     else if (action === "gtk-scale")
-      gtkScaleField.saveFailed(payload.value)
+      gtkScaleField.saveFailed(serial)
     else if ("width" in changes)
-      resolutionField.saveFailed(changes.width + "x" + changes.height)
+      resolutionField.saveFailed(serial)
     else if ("refreshRate" in changes)
-      rateField.saveFailed(changes.refreshRate)
+      rateField.saveFailed(serial)
     else if ("scale" in changes)
-      scaleField.saveFailed(changes.scale)
+      scaleField.saveFailed(serial)
     else if ("transform" in changes)
-      orientationField.saveFailed(changes.transform)
+      orientationField.saveFailed(serial)
     else if ("mirrorOf" in changes && !("disabled" in changes))
-      modeField.saveFailed(changes.mirrorOf)
+      modeField.saveFailed(serial)
   }
   function ensureSelection() {
     if (selected || !transaction.draft.length)
@@ -806,8 +809,8 @@ PanelKeyCatcher {
             currentValue: view.selected ? view.selected.mirrorOf : ""
             options: view.mirrorOptions
             enabled: !!view.selected && view.selected.connected && !view.selected.disabled
-            onChanged: function (value) {
-              view.setMirror(value)
+            onChanged: function (value, serial) {
+              view.setMirror(value, serial)
             }
           }
           RowLayout {
@@ -843,8 +846,8 @@ PanelKeyCatcher {
               dirty: view.marked("resolution")
               options: Model.resolutionOptions(view.selected)
               currentValue: view.selected ? view.selected.width + "x" + view.selected.height : ""
-              onChanged: function (value) {
-                view.setResolution(value)
+              onChanged: function (value, serial) {
+                view.setResolution(value, serial)
               }
             }
             Field {
@@ -855,10 +858,10 @@ PanelKeyCatcher {
               dirty: view.marked("rate")
               options: view.rateOptions
               currentValue: view.selected ? String(view.selected.refreshRate) : ""
-              onChanged: function (value) {
+              onChanged: function (value, serial) {
                 view.edit({
                   refreshRate: Number(value)
-                })
+                }, view.selected, serial)
               }
             }
             Field {
@@ -869,10 +872,10 @@ PanelKeyCatcher {
               dirty: view.marked("scale")
               options: view.scaleOptions
               currentValue: view.scaleValue
-              onChanged: function (value) {
+              onChanged: function (value, serial) {
                 view.edit({
                   scale: Number(value)
-                })
+                }, view.selected, serial)
               }
             }
             Field {
@@ -888,10 +891,10 @@ PanelKeyCatcher {
                 }
               })
               currentValue: view.selected ? String(view.selected.transform) : "0"
-              onChanged: function (value) {
+              onChanged: function (value, serial) {
                 view.edit({
                   transform: Number(value)
-                })
+                }, view.selected, serial)
               }
             }
           }
@@ -959,8 +962,8 @@ PanelKeyCatcher {
             options: view.pxOptions(["9", "10", "11", "12", "14", "16", "20"])
             currentValue: String(Style.font.baseSize)
             enabled: !MonitorService.advancedBusy
-            onChanged: function (value) {
-              MonitorService.setTextSize(value)
+            onChanged: function (value, serial) {
+              MonitorService.setTextSize(value, serial)
             }
           }
           Field {
@@ -971,8 +974,8 @@ PanelKeyCatcher {
             options: view.pxOptions(["24", "30", "36", "48", "72", "96"])
             currentValue: String(MonitorService.cursorSize)
             enabled: !MonitorService.advancedBusy
-            onChanged: function (value) {
-              MonitorService.setCursorSize(value)
+            onChanged: function (value, serial) {
+              MonitorService.setCursorSize(value, serial)
             }
           }
           Field {
@@ -984,10 +987,10 @@ PanelKeyCatcher {
             options: view.gtkScaleOptions
             currentValue: view.gtkScale.value === null ? view.tr("Unavailable") : String(view.gtkScale.value)
             enabled: view.gtkScale.value !== null && view.gtkScale.error === ""
-            onChanged: function (value) {
+            onChanged: function (value, serial) {
               MonitorService.enqueue("gtk-scale", {
                 value: Number(value)
-              })
+              }, serial)
             }
           }
           Label {
@@ -1242,14 +1245,15 @@ PanelKeyCatcher {
     property string currentValue: ""
     property alias options: dropdown.options
     readonly property bool popupOpen: dropdown.popupOpen
-    signal changed(string value)
+    // `serial` is the dropdown's serial of the pick (changed(value, serial)).
+    signal changed(string value, int serial)
     function open() {
       dropdown.open()
     }
-    // `value` failed to save. A newer pick on show stays: its own answer is still to come.
-    function saveFailed(value) {
-      if (dropdown.pickedValue === String(value))
-        dropdown.saveFailed()
+    // The pick `serial` failed to save. A newer pick on show, even of the
+    // same value, stays: its own answer is still to come.
+    function saveFailed(serial) {
+      dropdown.saveFailed(serial)
     }
     implicitWidth: dropdown.implicitWidth
     implicitHeight: fieldLabel.implicitHeight + FoamyStyle.gapSmall + dropdown.rowHeight
@@ -1282,8 +1286,8 @@ PanelKeyCatcher {
         if (isHovered)
           view.hover(field.stop)
       }
-      onChanged: function (value) {
-        field.changed(value)
+      onChanged: function (value, serial) {
+        field.changed(value, serial)
       }
     }
   }
