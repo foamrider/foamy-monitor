@@ -968,7 +968,11 @@ ShellRoot {
   function trialD() {
     eq(shell.service.transaction.phase, "idle", "a dead trial goes idle")
     var view = shell.leaderPanel().popup.bodyItem
-    check(shell.findText(view, "The display test stopped unexpectedly. The previous settings were restored.") !== null, "the recovery says so on the error line")
+    var errorLine = shell.findText(view, "The display test stopped unexpectedly. The previous settings were restored.")
+    check(errorLine !== null, "the recovery says so on the error line")
+    // runtime.py also runs a theme whose red reads 2.70:1 on the popup.
+    var errorRatio = errorLine ? FoamyPalette.contrastRatio(errorLine.color, FoamyPalette.background) : 0
+    check(errorRatio >= 4.5, "the error line reads on the popup: " + (errorLine ? errorLine.color + ", " + errorRatio.toFixed(2) + ":1" : "not shown"))
     shell.leaderPanel().close()
     until(function () {
       return !shell.service.scanning

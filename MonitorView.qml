@@ -3,7 +3,6 @@ import QtQuick
 import QtQuick.Controls as QQC
 import QtQuick.Layouts
 import qs.Commons
-import qs.Commons as Commons
 import qs.Ui
 import qs.Ui as Ui
 import "kit"
@@ -701,7 +700,7 @@ PanelKeyCatcher {
           width: content.inner
           visible: view.actionError !== ""
           text: view.errorText()
-          color: Commons.Color.urgent
+          color: FoamyPalette.onSurface(FoamyPalette.error)
           wrapMode: Text.WordWrap
           Accessible.role: Accessible.AlertMessage
         }
@@ -996,7 +995,7 @@ PanelKeyCatcher {
             Layout.fillWidth: true
             Layout.columnSpan: 2
             text: view.tr(view.gtkScale.error || "Text and cursor size apply immediately. GTK scale is included in Save; reopen apps after keeping it.")
-            color: view.gtkScale.error ? Commons.Color.urgent : FoamyPalette.secondaryText
+            color: view.gtkScale.error ? FoamyPalette.onSurface(FoamyPalette.error) : FoamyPalette.secondaryText
             small: true
             wrapMode: Text.WordWrap
           }
@@ -1036,7 +1035,7 @@ PanelKeyCatcher {
             bottomPadding: FoamyStyle.padding
             visible: text !== ""
             text: MonitorService.castRunning ? view.wirelessPhaseLabel() : MonitorService.wirelessError ? view.tr(MonitorService.wirelessError) : MonitorService.scanning || MonitorService.wirelessScanState === "idle" || MonitorService.wirelessPeers.length ? "" : view.tr("No receivers found")
-            color: MonitorService.wirelessError && !MonitorService.castRunning ? Commons.Color.urgent : FoamyPalette.mutedText
+            color: MonitorService.wirelessError && !MonitorService.castRunning ? FoamyPalette.onSurface(FoamyPalette.error) : FoamyPalette.mutedText
             small: true
           }
           // A scan with nothing to show yet: a searching row where the list
