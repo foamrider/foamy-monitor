@@ -38,6 +38,13 @@ ShellRoot {
   function eq(actual, expected, label) {
     check(actual === expected, label + ": got " + JSON.stringify(actual) + ", expected " + JSON.stringify(expected))
   }
+  // runtime.py also runs a theme whose red reads 2.70:1 on the popup
+  // (FOAMY_THEME "dim-red"): an error line must read there all the same.
+  readonly property bool dimRed: Quickshell.env("FOAMY_THEME") === "dim-red"
+  function readsOn(item, surface, label) {
+    var ratio = item ? FoamyPalette.contrastRatio(item.color, surface) : 0
+    check(ratio >= 4.5, label + ": " + (item ? item.color + ", " + ratio.toFixed(2) + ":1" : "not shown"))
+  }
   FoamyCursor {
     id: keys
   }
@@ -970,13 +977,59 @@ ShellRoot {
     var view = shell.leaderPanel().popup.bodyItem
     var errorLine = shell.findText(view, "The display test stopped unexpectedly. The previous settings were restored.")
     check(errorLine !== null, "the recovery says so on the error line")
-    // runtime.py also runs a theme whose red reads 2.70:1 on the popup.
-    var errorRatio = errorLine ? FoamyPalette.contrastRatio(errorLine.color, FoamyPalette.background) : 0
-    check(errorRatio >= 4.5, "the error line reads on the popup: " + (errorLine ? errorLine.color + ", " + errorRatio.toFixed(2) + ":1" : "not shown"))
+    if (shell.dimRed)
+      check(FoamyPalette.contrastRatio(FoamyPalette.error, FoamyPalette.background) < 4.5, "the dim-red theme is in effect: " + FoamyPalette.error)
+    shell.readsOn(errorLine, FoamyPalette.background, "the error line reads on the popup")
     shell.leaderPanel().close()
     until(function () {
       return !shell.service.scanning
-    }, "the scan to stop with the last popup", wifiA)
+    }, "the scan to stop with the last popup", gtkErrorA)
+  }
+  // A second GDK_SCALE in monitors.lua: Advanced says why the GTK scale
+  // cannot be read, in the error colour.
+  readonly property string monitorsLua: "\"${XDG_CONFIG_HOME:-$HOME/.config}/hypr/monitors.lua\""
+  function gtkErrorA() {
+    shell.sh("printf 'hl.env(\"GDK_SCALE\", \"2\")\\n' >> " + shell.monitorsLua, function () {
+      panel(0).open()
+      panel(0).popup.bodyItem.setTab("Advanced")
+      shell.service.refresh()
+      until(function () {
+        return !!shell.service.gtkScale.error
+      }, "the GTK scale error", gtkErrorB)
+    })
+  }
+  function gtkErrorB() {
+    var view = panel(0).popup.bodyItem
+    eq(shell.service.gtkScale.error, "Remove duplicate GDK_SCALE settings from monitors.lua", "two GDK_SCALE settings are a GTK scale error")
+    shell.readsOn(shell.findText(view, view.tr(shell.service.gtkScale.error)), FoamyPalette.background, "the GTK scale error reads on the popup")
+    shell.sh("sed -i '$d' " + shell.monitorsLua, function () {
+      shell.service.refresh()
+      until(function () {
+        return shell.service.gtkScale.error === ""
+      }, "the GTK scale read again", scanErrorA)
+    })
+  }
+  // A scan FluxCast fails (fakebin .scanfail): Wireless shows its reason in
+  // the error colour.
+  function scanErrorA() {
+    shell.sh("printf 'Wi-Fi Direct is off' > \"$FOAMY_CALLS.scanfail\"", function () {
+      shell.service.wirelessScannedAt = 0
+      panel(0).popup.bodyItem.setTab("Wireless")
+      until(function () {
+        return shell.service.wirelessScanState === "error" && !shell.service.scanning
+      }, "the failed scan", scanErrorB)
+    })
+  }
+  function scanErrorB() {
+    var view = panel(0).popup.bodyItem
+    eq(shell.service.wirelessError, "Wi-Fi Direct is off", "a failed scan gives FluxCast's reason")
+    shell.readsOn(shell.findText(view, view.tr(shell.service.wirelessError)), FoamyPalette.background, "the wireless error reads on the popup")
+    shell.sh("rm -f \"$FOAMY_CALLS.scanfail\"", function () {
+      panel(0).close()
+      until(function () {
+        return !shell.service.scanning
+      }, "no scan after the failed one", wifiA)
+    })
   }
 
   // ---- Wireless receivers cached in the service (2-minute TTL) ----

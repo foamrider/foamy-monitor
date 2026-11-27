@@ -186,6 +186,8 @@ def run(host, lang, theme="dark"):
         PATH=f"{fake}:{r.env['PATH']}",
         FOAMY_CALLS=str(calls),
         FOAMY_FAKEBIN=str(fake),
+        # The scene checks that the dim red is in effect.
+        FOAMY_THEME=Path(theme).stem,
     )
     r.start()
     try:
@@ -227,8 +229,10 @@ def run(host, lang, theme="dark"):
 
 if __name__ == "__main__":
     # The last case: a dark theme with a dim red (2.70:1 on its background),
-    # where the error line must lighten until it reads.
+    # where the error lines must lighten until they read.
     dim_red = KIT / "tests/fixtures/themes/dim-red.toml"
+    if not dim_red.is_file():
+        raise SystemExit(f"the dim-red theme is missing at {dim_red} (update FOAMY_KIT)")
     cases = [("4.5", "en", "dark"), ("4.5", "ar", "dark"), ("4.5", "en", dim_red)]
     if len(sys.argv) > 1:
         cases = [c for c in cases if c[0] in sys.argv[1:] or f"{c[0]}/{c[1]}" in sys.argv[1:]]

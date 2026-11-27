@@ -121,7 +121,9 @@ if os.path.exists(os.environ["FOAMY_CALLS"] + ".textfail"):
         # With $FOAMY_CALLS.peers present a scan instead finishes after
         # $FOAMY_CALLS.scandelay seconds (default 0.8) and prints those peers
         # (FluxCast's "[n] MAC name via source" lines). With
-        # $FOAMY_CALLS.stubborn present it ignores SIGINT. A "fluxcast-ready"
+        # $FOAMY_CALLS.stubborn present it ignores SIGINT. With
+        # $FOAMY_CALLS.scanfail present a scan fails at once: an "ERROR:" line
+        # with that file's reason, exit 1. A "fluxcast-ready"
         # line in $FOAMY_CALLS says its signal handlers are in place. With
         # $FOAMY_CALLS.casting present a cast reaches its receiver.
         "fluxcast": LOGGER
@@ -141,6 +143,10 @@ if os.path.exists(os.environ["FOAMY_CALLS"] + ".stubborn"):
     signal.signal(signal.SIGINT, ignore)
 with open(os.environ["FOAMY_CALLS"], "a") as log:
     log.write("fluxcast-ready\\n")
+fail = os.environ["FOAMY_CALLS"] + ".scanfail"
+if "--wfd-scan" in sys.argv and os.path.exists(fail):
+    print("ERROR: " + open(fail).read(), flush=True)
+    sys.exit(1)
 peers = os.environ["FOAMY_CALLS"] + ".peers"
 if "--wfd-scan" in sys.argv and os.path.exists(peers):
     delay = os.environ["FOAMY_CALLS"] + ".scandelay"
