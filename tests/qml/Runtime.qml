@@ -333,9 +333,11 @@ ShellRoot {
     eq(view.brightnessAvailable, true, "brightness read for the open popup")
     eq(view.brightnessPercent, 50, "brightness value")
     eq(view.cursorKey, "", "no cursor highlight on open")
+    eq(keysLooks(view).length, 0, "nothing draws the keys' border on open")
     // The tab row is one stop: h/l move along it, Enter opens a tab.
     view.moveRequested(0, 1)
     eq(view.cursorKey, "tabs", "first move lands on the tab row")
+    eq(keysLooks(view.itemFor("tabs")).length, 1, "j: the tab with the cursor draws the keys' border")
     view.moveRequested(1, 0)
     eq(view.activeTab, "Display", "l moves along the tabs and opens none")
     view.activateRequested()
@@ -346,14 +348,19 @@ ShellRoot {
     view.moveRequested(0, -1)
     eq(view.cursorKey, "tabs", "k goes back to the tab row")
     check(view.stops.indexOf("save") > 0 && view.stops.indexOf("discard") > 0, "pending change adds Discard and Save")
+    // The pointer on the tab row, then w: the keys have the cursor again.
+    view.itemFor("tabs").hovered()
+    eq(keysLooks(view).length, 0, "the pointer on the tab row: no keys' border")
     shell.key(view, "w")
     eq(view.activeTab, "Wireless", "w opens Wireless")
+    eq(keysLooks(view.itemFor("tabs")).length, 1, "w: the tab row draws the keys' border")
     // The row's cursor follows: Enter on the row keeps Wireless open.
     view.activateRequested()
     eq(view.activeTab, "Wireless", "w puts the tab row's cursor on Wireless")
     eq(shell.service.wirelessWanted, true, "the Wireless tab wants a scan")
     view.setTab("Display")
     eq(shell.service.wirelessWanted, false, "leaving Wireless releases it")
+    keysBorder(view)
     view.place("identify")
     view.itemFor("tabs").hovered()
     eq(view.cursorKey, "tabs", "a hovered tab takes the panel's one cursor")
@@ -1052,6 +1059,46 @@ ShellRoot {
   // ---- Wireless receivers cached in the service (2-minute TTL) ----
   // The fake FluxCast lists $FOAMY_CALLS.peers after $FOAMY_CALLS.scandelay s.
   property int scansBefore: 0
+  // Every item under `item` that draws the keys' cursor: a surface's or an
+  // action's 1 px accent border, a tab's (the pointer's cursor has none; a
+  // display box keeps its own look). The scene never shows the popup, so
+  // nothing here is `visible`: only the cursor's own item draws it.
+  function keysLooks(item, found) {
+    found = found || []
+    if (!item)
+      return found
+    if (item.borderSpec !== undefined && item.byKeys !== undefined) {
+      if (item.hasCursor && item.borderTop >= FoamyStyle.borderWidth && Qt.colorEqual(item.borderSpec.color, item.accent))
+        found.push(item)
+    } else if (item.border !== undefined && item.border.width > 0 && Qt.colorEqual(item.border.color, FoamyPalette.accent))
+      found.push(item)
+    for (var i = 0; i < item.children.length; i++)
+      keysLooks(item.children[i], found)
+    return found
+  }
+  // l along the tab row after the pointer, ↓ to Identify and Brightness:
+  // each draws the keys' border; the pointer onto Identify clears it.
+  function keysBorder(view) {
+    view.itemFor("tabs").hovered()
+    view.moveRequested(1, 0)
+    var tabs = keysLooks(view.itemFor("tabs"))
+    check(tabs.length === 1 && keysLooks(view).length === 1, "l after the pointer: one tab draws the keys' border (" + tabs.length + ")")
+    view.moveRequested(-1, 0)
+    for (var n = 0; n < view.stops.length && view.cursorKey !== "identify"; n++)
+      view.moveRequested(0, 1)
+    eq(view.cursorKey, "identify", "fixture: ↓ reaches Identify")
+    var identify = view.itemFor("identify")
+    check(keysLooks(view).length === 1 && keysLooks(identify).length === 1, "↓: Identify draws the keys' border")
+    for (n = 0; n < view.stops.length && view.cursorKey !== "brightness"; n++)
+      view.moveRequested(0, 1)
+    eq(view.cursorKey, "brightness", "fixture: ↓ reaches Brightness")
+    check(keysLooks(view).length === 1 && keysLooks(view).indexOf(view.itemFor("brightness")) === 0, "↓: the brightness row draws the keys' border")
+    // The pointer's way onto Identify (its hover handler), as the tab
+    // row's above: the popup is not on screen for real pointer events.
+    view.hover("identify")
+    eq(view.cursorKey, "identify", "the pointer moves the cursor to Identify")
+    eq(keysLooks(view).length, 0, "the pointer on Identify: no keys' border")
+  }
   // The first item under `item` (depth first) whose text is `text`.
   function findText(item, text) {
     if (!item)

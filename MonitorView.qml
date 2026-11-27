@@ -453,9 +453,10 @@ PanelKeyCatcher {
       cursor.move(dy)
       return
     }
-    if (cursorKey === "tabs")
+    if (cursorKey === "tabs") {
       tabBar.moveCursor(dx)
-    else if (cursorKey === "brightness")
+      cursor.byKeys = true
+    } else if (cursorKey === "brightness")
       stepBrightness(dx)
     else
       cursor.move(dx)
@@ -489,6 +490,7 @@ PanelKeyCatcher {
     if (text === "w" || text === "W") {
       setTab("Wireless")
       place("tabs")
+      cursor.byKeys = true
       // A row that had the cursor already keeps its own tab cursor: put it
       // on the tab w opened, so Enter there does not open another one.
       tabBar.cursorIndex = tabBar.indexOf("Wireless")
@@ -664,6 +666,7 @@ PanelKeyCatcher {
         }
       })
       hasCursor: view.hasCursor("tabs")
+      cursorByKeys: cursor.byKeys
       onActivated: function (value) {
         view.setTab(value)
       }
@@ -759,6 +762,7 @@ PanelKeyCatcher {
                   tooltipText: view.tr("Identify displays")
                   foreground: FoamyPalette.secondaryText
                   hasCursor: view.hasCursor("identify")
+                  cursorByKeys: cursor.byKeys
                   onHoveredChanged: if (hovered)
                     view.hover("identify")
                   onClicked: MonitorService.showIdentify()
@@ -778,6 +782,7 @@ PanelKeyCatcher {
               width: parent.width
               height: FoamyStyle.rowHeight
               hasCursor: view.hasCursor("offline:" + index)
+              byKeys: cursor.byKeys
               current: view.selectedMonitor === modelData.id
               onHovered: view.hover("offline:" + index)
               onClicked: view.selectMonitor(modelData.id)
@@ -906,6 +911,7 @@ PanelKeyCatcher {
             width: parent.width + FoamyStyle.gap * 2
             height: brightnessColumn.implicitHeight + FoamyStyle.gap * 2
             hasCursor: view.hasCursor("brightness")
+            byKeys: cursor.byKeys
             onHovered: view.hover("brightness")
             Column {
               id: brightnessColumn
@@ -1025,6 +1031,7 @@ PanelKeyCatcher {
               spinning: view.scanSpinning
               actionEnabled: MonitorService.castRunning ? !MonitorService.castExpectedStop : !MonitorService.scanning
               hasCursor: view.hasCursor("scan")
+              cursorByKeys: cursor.byKeys
               onHoveredChanged: if (hovered)
                 view.hover("scan")
               onClicked: view.scanOrStop()
@@ -1099,6 +1106,7 @@ PanelKeyCatcher {
               width: parent.width
               height: FoamyStyle.rowHeight
               hasCursor: view.hasCursor("peer:" + index)
+              byKeys: cursor.byKeys
               onHovered: view.hover("peer:" + index)
               onClicked: view.connectPeer(modelData)
               Accessible.role: Accessible.Button
