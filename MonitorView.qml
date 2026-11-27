@@ -1136,6 +1136,7 @@ PanelKeyCatcher {
       visible: shown
       clip: true
       Rectangle {
+        objectName: "monitorFooterFill"
         anchors.fill: parent
         bottomLeftRadius: Math.max(0, FoamyStyle.radius - FoamyStyle.borderWidth)
         bottomRightRadius: bottomLeftRadius

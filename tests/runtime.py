@@ -171,7 +171,12 @@ def overlaps(path):
 def run(host, lang, theme="dark"):
     shell = (PLUGIN / "tests/qml/Runtime.qml").read_text()
     r = harness.Run(
-        host, shell, plugin=PLUGIN, theme=theme, language=lang, prefix=f"foamy-monitor-runtime-{host}-{lang}-"
+        host,
+        shell,
+        plugin=PLUGIN,
+        theme=theme,
+        language=lang,
+        prefix=f"foamy-monitor-runtime-{host}-{lang}-{Path(theme).stem}-",
     )
     home = Path(r.env["HOME"])
     (home / ".config/hypr").mkdir(parents=True)

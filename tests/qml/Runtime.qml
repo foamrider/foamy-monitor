@@ -41,6 +41,13 @@ ShellRoot {
   // runtime.py also runs a theme whose red reads 2.70:1 on the popup
   // (FOAMY_THEME "dim-red"): an error line must read there all the same.
   readonly property bool dimRed: Quickshell.env("FOAMY_THEME") === "dim-red"
+  // And the light theme, where the popup's yellow reads under 4.5:1 on the
+  // footer's trial fill.
+  readonly property bool lightRun: Quickshell.env("FOAMY_THEME") === "light"
+  // The popup card's colour as drawn.
+  function cardColor(p) {
+    return p && p.popup.cardItem ? p.popup.cardItem.color : "transparent"
+  }
   function readsOn(item, surface, label) {
     var ratio = item ? FoamyPalette.contrastRatio(item.color, surface) : 0
     check(ratio >= 4.5, label + ": " + (item ? item.color + ", " + ratio.toFixed(2) + ":1" : "not shown"))
@@ -933,9 +940,14 @@ ShellRoot {
     pick(view, "resolution", view.dropdownFor("resolution").currentValue === "1280x720" ? "1920x1080" : "1280x720")
     check(shows(view, "resolution", view.dropdownFor("resolution").currentValue), "a resolution picked during a trial shows the mode in use again")
     // The countdown is drawn on the footer's trial fill.
-    var countdown = shell.findNamed(view, "monitorSaveStatus")
-    var footerFill = countdown ? countdown.parent.parent.parent.children[0].color : "transparent"
-    shell.readsOn(countdown, Qt.tint(FoamyPalette.background, footerFill), "the trial countdown reads on the footer's fill")
+    var footerFill = shell.findNamed(view, "monitorFooterFill")
+    var footerSurface = Qt.tint(shell.cardColor(shell.leaderPanel()), footerFill ? footerFill.color : "transparent")
+    if (shell.lightRun) {
+      check(FoamyPalette.lightTheme, "the light theme is in effect")
+      var popupInk = FoamyPalette.onSurface(FoamyPalette.warning)
+      check(FoamyPalette.contrastRatio(popupInk, footerSurface) < 4.5, "the popup's yellow does not read on the footer's fill: " + popupInk + ", " + FoamyPalette.contrastRatio(popupInk, footerSurface).toFixed(2) + ":1")
+    }
+    shell.readsOn(shell.findNamed(view, "monitorSaveStatus"), footerSurface, "the trial countdown reads on the footer's fill")
     view.setTab("Advanced")
     check(view.footerShown, "the trial footer shows on Advanced")
     view.setTab("Wireless")
@@ -982,8 +994,8 @@ ShellRoot {
     var errorLine = shell.findText(view, "The display test stopped unexpectedly. The previous settings were restored.")
     check(errorLine !== null, "the recovery says so on the error line")
     if (shell.dimRed)
-      check(FoamyPalette.contrastRatio(FoamyPalette.error, FoamyPalette.background) < 4.5, "the dim-red theme is in effect: " + FoamyPalette.error)
-    shell.readsOn(errorLine, FoamyPalette.background, "the error line reads on the popup")
+      check(FoamyPalette.contrastRatio(FoamyPalette.error, shell.cardColor(shell.leaderPanel())) < 4.5, "the dim-red theme is in effect: " + FoamyPalette.error)
+    shell.readsOn(errorLine, shell.cardColor(shell.leaderPanel()), "the error line reads on the popup")
     shell.leaderPanel().close()
     until(function () {
       return !shell.service.scanning
@@ -992,8 +1004,9 @@ ShellRoot {
   // A second GDK_SCALE in monitors.lua: Advanced says why the GTK scale
   // cannot be read, in the error colour.
   readonly property string monitorsLua: "\"${XDG_CONFIG_HOME:-$HOME/.config}/hypr/monitors.lua\""
+  readonly property string monitorsLuaKept: "\"${XDG_CONFIG_HOME:-$HOME/.config}/hypr/monitors.lua.kept\""
   function gtkErrorA() {
-    shell.sh("printf 'hl.env(\"GDK_SCALE\", \"2\")\\n' >> " + shell.monitorsLua, function () {
+    shell.sh("cp " + shell.monitorsLua + " " + shell.monitorsLuaKept + " && printf 'hl.env(\"GDK_SCALE\", \"2\")\\n' >> " + shell.monitorsLua, function () {
       panel(0).open()
       panel(0).popup.bodyItem.setTab("Advanced")
       shell.service.refresh()
@@ -1005,8 +1018,8 @@ ShellRoot {
   function gtkErrorB() {
     var view = panel(0).popup.bodyItem
     eq(shell.service.gtkScale.error, "Remove duplicate GDK_SCALE settings from monitors.lua", "two GDK_SCALE settings are a GTK scale error")
-    shell.readsOn(shell.findText(view, view.tr(shell.service.gtkScale.error)), FoamyPalette.background, "the GTK scale error reads on the popup")
-    shell.sh("sed -i '$d' " + shell.monitorsLua, function () {
+    shell.readsOn(shell.findText(view, view.tr(shell.service.gtkScale.error)), shell.cardColor(panel(0)), "the GTK scale error reads on the popup")
+    shell.sh("mv " + shell.monitorsLuaKept + " " + shell.monitorsLua, function () {
       shell.service.refresh()
       until(function () {
         return shell.service.gtkScale.error === ""
@@ -1027,7 +1040,7 @@ ShellRoot {
   function scanErrorB() {
     var view = panel(0).popup.bodyItem
     eq(shell.service.wirelessError, "Wi-Fi Direct is off", "a failed scan gives FluxCast's reason")
-    shell.readsOn(shell.findText(view, view.tr(shell.service.wirelessError)), FoamyPalette.background, "the wireless error reads on the popup")
+    shell.readsOn(shell.findText(view, view.tr(shell.service.wirelessError)), shell.cardColor(panel(0)), "the wireless error reads on the popup")
     shell.sh("rm -f \"$FOAMY_CALLS.scanfail\"", function () {
       panel(0).close()
       until(function () {
