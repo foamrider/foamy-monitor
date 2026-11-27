@@ -228,12 +228,13 @@ def run(host, lang, theme="dark"):
 
 
 if __name__ == "__main__":
-    # The last case: a dark theme with a dim red (2.70:1 on its background),
-    # where the error lines must lighten until they read.
+    # A dark theme with a dim red (2.70:1 on its background), where the error
+    # lines must lighten until they read, and the light theme, where the
+    # footer's yellow must darken until it reads on the trial's fill.
     dim_red = KIT / "tests/fixtures/themes/dim-red.toml"
     if not dim_red.is_file():
         raise SystemExit(f"the dim-red theme is missing at {dim_red} (update FOAMY_KIT)")
-    cases = [("4.5", "en", "dark"), ("4.5", "ar", "dark"), ("4.5", "en", dim_red)]
+    cases = [("4.5", "en", "dark"), ("4.5", "ar", "dark"), ("4.5", "en", dim_red), ("4.5", "en", "light")]
     if len(sys.argv) > 1:
         cases = [c for c in cases if c[0] in sys.argv[1:] or f"{c[0]}/{c[1]}" in sys.argv[1:]]
     results = [run(host, lang, theme) for host, lang, theme in cases]

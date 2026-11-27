@@ -56,7 +56,9 @@ PanelKeyCatcher {
   readonly property var brightnessState: brightnessTarget ? MonitorService.brightness[brightnessTarget] || null : null
   readonly property bool brightnessAvailable: !!brightnessState && brightnessState.available
   readonly property int brightnessPercent: brightnessState ? brightnessState.percent : 0
-  readonly property color changedColor: FoamyPalette.onSurface(FoamyPalette.warning)
+  // Measured on the footer's trial fill: the stricter of the surfaces it is
+  // drawn on (the popup otherwise), so it keeps one colour on both.
+  readonly property color changedColor: FoamyPalette.onSurface(FoamyPalette.warning, Qt.tint(FoamyPalette.background, FoamyPalette.fieldFill))
   readonly property color errorColor: FoamyPalette.onSurface(FoamyPalette.error)
   readonly property var gtkScale: MonitorService.gtkScale
 

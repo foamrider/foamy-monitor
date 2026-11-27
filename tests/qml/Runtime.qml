@@ -932,6 +932,10 @@ ShellRoot {
     // changes a display during the trial.
     pick(view, "resolution", view.dropdownFor("resolution").currentValue === "1280x720" ? "1920x1080" : "1280x720")
     check(shows(view, "resolution", view.dropdownFor("resolution").currentValue), "a resolution picked during a trial shows the mode in use again")
+    // The countdown is drawn on the footer's trial fill.
+    var countdown = shell.findNamed(view, "monitorSaveStatus")
+    var footerFill = countdown ? countdown.parent.parent.parent.children[0].color : "transparent"
+    shell.readsOn(countdown, Qt.tint(FoamyPalette.background, footerFill), "the trial countdown reads on the footer's fill")
     view.setTab("Advanced")
     check(view.footerShown, "the trial footer shows on Advanced")
     view.setTab("Wireless")
@@ -1043,6 +1047,19 @@ ShellRoot {
       return item
     for (var i = 0; i < item.children.length; i++) {
       var found = findText(item.children[i], text)
+      if (found)
+        return found
+    }
+    return null
+  }
+  // The first item under `item` (depth first) whose objectName is `name`.
+  function findNamed(item, name) {
+    if (!item)
+      return null
+    if (item.objectName === name)
+      return item
+    for (var i = 0; i < item.children.length; i++) {
+      var found = findNamed(item.children[i], name)
       if (found)
         return found
     }
