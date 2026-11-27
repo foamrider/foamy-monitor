@@ -209,6 +209,7 @@ node tests/model.test.js && node tests/i18n.test.cjs
 python3 -I tests/test_display_transaction.py && python3 -I tests/test_fluxcast_bridge.py
 python3 tests/runtime.py            # offscreen on the installed 4.5 shell (needs foamy-kit)
 python3 tests/runtime-idle.py       # commands and helper runs, CPU while every popup is closed
+python3 tests/runtime-buttons.py    # the popup's buttons under a real pointer and the keys
 ```
 
 and the helper suites again with the other architecture's binary when
