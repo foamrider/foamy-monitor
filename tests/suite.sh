@@ -43,10 +43,11 @@ else
 fi
 
 if ((ci || fast)); then
-  skip "tests/runtime.py, tests/runtime-idle.py, the kit's i18n_runtime.py: offscreen Quickshell"
+  skip "tests/runtime.py, tests/runtime-idle.py, tests/runtime-buttons.py, the kit's i18n_runtime.py: offscreen Quickshell"
 else
   run python3 tests/runtime.py
   run python3 tests/runtime-idle.py
+  run python3 tests/runtime-buttons.py
   if [[ -n ${FOAMY_KIT:-} ]]; then
     run python3 "$FOAMY_KIT/preview/i18n_runtime.py" .
   else

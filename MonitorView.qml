@@ -4,7 +4,6 @@ import QtQuick.Controls as QQC
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui
-import qs.Ui as Ui
 import "kit"
 import "Model.js" as Model
 
@@ -827,15 +826,16 @@ PanelKeyCatcher {
               Layout.fillWidth: true
               elide: Text.ElideRight
             }
-            Button {
+            // Stays a cursor stop when it can't act (the last display on):
+            // inert, not disabled.
+            FoamyButton {
               id: powerButton
               text: view.tr(view.selected && view.selected.disabled ? "Turn on" : "Turn off")
-              enabled: !!view.selected && view.selected.connected && (view.selected.disabled || view.activeCount > 1)
+              actionEnabled: !!view.selected && view.selected.connected && (view.selected.disabled || view.activeCount > 1)
               hasCursor: view.hasCursor("power")
-              onHovered: function (hovered) {
-                if (hovered)
-                  view.hover("power")
-              }
+              cursorByKeys: cursor.byKeys
+              onHoveredChanged: if (hovered)
+                view.hover("power")
               onClicked: view.toggleDisplay()
             }
           }
@@ -1180,35 +1180,34 @@ PanelKeyCatcher {
             small: true
             wrapMode: Text.WordWrap
           }
-          Button {
+          FoamyButton {
             visible: !view.busy && view.changeCount > 0
             text: view.tr("Discard")
             hasCursor: view.hasCursor("discard")
-            onHovered: function (hovered) {
-              if (hovered)
-                view.hover("discard")
-            }
+            cursorByKeys: cursor.byKeys
+            onHoveredChanged: if (hovered)
+              view.hover("discard")
             onClicked: MonitorService.enqueue("discard")
           }
-          Button {
+          FoamyButton {
             visible: view.testing
             text: view.tr("Revert")
             hasCursor: view.hasCursor("revert")
-            onHovered: function (hovered) {
-              if (hovered)
-                view.hover("revert")
-            }
+            cursorByKeys: cursor.byKeys
+            onHoveredChanged: if (hovered)
+              view.hover("revert")
             onClicked: view.decide("revert")
           }
-          PrimaryButton {
+          // Inert, still a cursor stop, while a disconnected display blocks saving.
+          FoamyButton {
+            kind: "primary"
             visible: (!view.busy && view.changeCount > 0) || view.testing
             text: view.tr(view.testing ? "Keep settings" : "Save")
-            enabled: view.testing || view.changeCount > 0 && !view.busy && !MonitorService.disconnectedDraft
+            actionEnabled: view.testing || view.changeCount > 0 && !view.busy && !MonitorService.disconnectedDraft
             hasCursor: view.hasCursor(view.testing ? "keep" : "save")
-            onHovered: function (hovered) {
-              if (hovered)
-                view.hover(view.testing ? "keep" : "save")
-            }
+            cursorByKeys: cursor.byKeys
+            onHoveredChanged: if (hovered)
+              view.hover(view.testing ? "keep" : "save")
             onClicked: view.testing ? view.decide("keep") : view.save()
           }
         }
@@ -1235,18 +1234,6 @@ PanelKeyCatcher {
     color: FoamyPalette.text
     font.family: FoamyStyle.fontFamily
     font.pixelSize: small ? FoamyStyle.font.bodySmall : FoamyStyle.font.body
-  }
-  component Button: Ui.Button {
-    bordered: true
-    fontFamily: FoamyStyle.fontFamily
-    fontSize: FoamyStyle.font.body
-    foreground: FoamyPalette.text
-    radius: FoamyStyle.radius
-    opacity: enabled ? 1 : FoamyStyle.disabledOpacity
-  }
-  component PrimaryButton: Button {
-    foreground: FoamyPalette.background
-    color: hot ? Qt.alpha(FoamyPalette.text, 0.85) : FoamyPalette.text
   }
   component Field: Item {
     id: field
