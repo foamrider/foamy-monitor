@@ -168,9 +168,16 @@ def overlaps(path):
     return worst, sum(1 for e in events if e[0] == "start")
 
 
-def run(host, lang):
+def run(host, lang, theme="dark"):
     shell = (PLUGIN / "tests/qml/Runtime.qml").read_text()
-    r = harness.Run(host, shell, plugin=PLUGIN, language=lang, prefix=f"foamy-monitor-runtime-{host}-{lang}-")
+    r = harness.Run(
+        host,
+        shell,
+        plugin=PLUGIN,
+        theme=theme,
+        language=lang,
+        prefix=f"foamy-monitor-runtime-{host}-{lang}-{Path(theme).stem}-",
+    )
     home = Path(r.env["HOME"])
     (home / ".config/hypr").mkdir(parents=True)
     (home / ".config/hypr/monitors.lua").write_text(CONFIG)
@@ -184,6 +191,8 @@ def run(host, lang):
         PATH=f"{fake}:{r.env['PATH']}",
         FOAMY_CALLS=str(calls),
         FOAMY_FAKEBIN=str(fake),
+        # The scene checks that the dim red is in effect.
+        FOAMY_THEME=Path(theme).stem,
     )
     r.start()
     try:
@@ -211,7 +220,10 @@ def run(host, lang):
     elif Path("/proc", hang_pid.read_text().strip()).exists():
         failures.append("the hung brightness command outlived its deadline")
     ok = "FOAMY DONE" in log and not failures
-    print(f"{'PASS' if ok else 'FAIL'} runtime {host} {lang}: {result}; {jobs} brightness jobs, max {depth} at once")
+    print(
+        f"{'PASS' if ok else 'FAIL'} runtime {host} {lang} {Path(theme).stem}: {result}; "
+        f"{jobs} brightness jobs, max {depth} at once"
+    )
     if not ok:
         print("\n".join("    " + line for line in (failures or log.splitlines()[-40:])))
         print(f"    log kept at {r.base}")
@@ -221,8 +233,14 @@ def run(host, lang):
 
 
 if __name__ == "__main__":
-    cases = [("4.5", "en"), ("4.5", "ar")]
+    # A dark theme with a dim red (2.70:1 on its background), where the error
+    # lines must lighten until they read, and the light theme, where the
+    # footer's yellow must darken until it reads on the trial's fill.
+    dim_red = KIT / "tests/fixtures/themes/dim-red.toml"
+    if not dim_red.is_file():
+        raise SystemExit(f"the dim-red theme is missing at {dim_red} (update FOAMY_KIT)")
+    cases = [("4.5", "en", "dark"), ("4.5", "ar", "dark"), ("4.5", "en", dim_red), ("4.5", "en", "light")]
     if len(sys.argv) > 1:
         cases = [c for c in cases if c[0] in sys.argv[1:] or f"{c[0]}/{c[1]}" in sys.argv[1:]]
-    results = [run(host, lang) for host, lang in cases]
+    results = [run(host, lang, theme) for host, lang, theme in cases]
     raise SystemExit(0 if all(results) else 1)

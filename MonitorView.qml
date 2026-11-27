@@ -3,7 +3,6 @@ import QtQuick
 import QtQuick.Controls as QQC
 import QtQuick.Layouts
 import qs.Commons
-import qs.Commons as Commons
 import qs.Ui
 import qs.Ui as Ui
 import "kit"
@@ -57,7 +56,10 @@ PanelKeyCatcher {
   readonly property var brightnessState: brightnessTarget ? MonitorService.brightness[brightnessTarget] || null : null
   readonly property bool brightnessAvailable: !!brightnessState && brightnessState.available
   readonly property int brightnessPercent: brightnessState ? brightnessState.percent : 0
-  readonly property color changedColor: FoamyPalette.onSurface(FoamyPalette.warning)
+  // Measured on the footer's trial fill: the stricter of the surfaces it is
+  // drawn on (the popup otherwise), so it keeps one colour on both.
+  readonly property color changedColor: FoamyPalette.onSurface(FoamyPalette.warning, Qt.tint(FoamyPalette.background, FoamyPalette.fieldFill))
+  readonly property color errorColor: FoamyPalette.onSurface(FoamyPalette.error)
   readonly property var gtkScale: MonitorService.gtkScale
 
   readonly property var tabs: ["Display", "Advanced", "Wireless"]
@@ -701,7 +703,7 @@ PanelKeyCatcher {
           width: content.inner
           visible: view.actionError !== ""
           text: view.errorText()
-          color: Commons.Color.urgent
+          color: view.errorColor
           wrapMode: Text.WordWrap
           Accessible.role: Accessible.AlertMessage
         }
@@ -996,7 +998,7 @@ PanelKeyCatcher {
             Layout.fillWidth: true
             Layout.columnSpan: 2
             text: view.tr(view.gtkScale.error || "Text and cursor size apply immediately. GTK scale is included in Save; reopen apps after keeping it.")
-            color: view.gtkScale.error ? Commons.Color.urgent : FoamyPalette.secondaryText
+            color: view.gtkScale.error ? view.errorColor : FoamyPalette.secondaryText
             small: true
             wrapMode: Text.WordWrap
           }
@@ -1036,7 +1038,7 @@ PanelKeyCatcher {
             bottomPadding: FoamyStyle.padding
             visible: text !== ""
             text: MonitorService.castRunning ? view.wirelessPhaseLabel() : MonitorService.wirelessError ? view.tr(MonitorService.wirelessError) : MonitorService.scanning || MonitorService.wirelessScanState === "idle" || MonitorService.wirelessPeers.length ? "" : view.tr("No receivers found")
-            color: MonitorService.wirelessError && !MonitorService.castRunning ? Commons.Color.urgent : FoamyPalette.mutedText
+            color: MonitorService.wirelessError && !MonitorService.castRunning ? view.errorColor : FoamyPalette.mutedText
             small: true
           }
           // A scan with nothing to show yet: a searching row where the list
@@ -1134,6 +1136,7 @@ PanelKeyCatcher {
       visible: shown
       clip: true
       Rectangle {
+        objectName: "monitorFooterFill"
         anchors.fill: parent
         bottomLeftRadius: Math.max(0, FoamyStyle.radius - FoamyStyle.borderWidth)
         bottomRightRadius: bottomLeftRadius
