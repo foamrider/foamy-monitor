@@ -453,11 +453,13 @@ PanelKeyCatcher {
       cursor.move(dy)
       return
     }
-    if (cursorKey === "tabs")
+    if (cursorKey === "tabs") {
       tabBar.moveCursor(dx)
-    else if (cursorKey === "brightness")
+      cursor.byKeys = true
+    } else if (cursorKey === "brightness") {
       stepBrightness(dx)
-    else
+      cursor.byKeys = true
+    } else
       cursor.move(dx)
   }
   onActivateRequested: {
@@ -489,6 +491,7 @@ PanelKeyCatcher {
     if (text === "w" || text === "W") {
       setTab("Wireless")
       place("tabs")
+      cursor.byKeys = true
       // A row that had the cursor already keeps its own tab cursor: put it
       // on the tab w opened, so Enter there does not open another one.
       tabBar.cursorIndex = tabBar.indexOf("Wireless")
@@ -664,6 +667,7 @@ PanelKeyCatcher {
         }
       })
       hasCursor: view.hasCursor("tabs")
+      cursorByKeys: cursor.byKeys
       onActivated: function (value) {
         view.setTab(value)
       }
@@ -759,6 +763,7 @@ PanelKeyCatcher {
                   tooltipText: view.tr("Identify displays")
                   foreground: FoamyPalette.secondaryText
                   hasCursor: view.hasCursor("identify")
+                  cursorByKeys: cursor.byKeys
                   onHoveredChanged: if (hovered)
                     view.hover("identify")
                   onClicked: MonitorService.showIdentify()
@@ -778,6 +783,7 @@ PanelKeyCatcher {
               width: parent.width
               height: FoamyStyle.rowHeight
               hasCursor: view.hasCursor("offline:" + index)
+              byKeys: cursor.byKeys
               current: view.selectedMonitor === modelData.id
               onHovered: view.hover("offline:" + index)
               onClicked: view.selectMonitor(modelData.id)
@@ -906,6 +912,7 @@ PanelKeyCatcher {
             width: parent.width + FoamyStyle.gap * 2
             height: brightnessColumn.implicitHeight + FoamyStyle.gap * 2
             hasCursor: view.hasCursor("brightness")
+            byKeys: cursor.byKeys
             onHovered: view.hover("brightness")
             Column {
               id: brightnessColumn
@@ -1025,6 +1032,7 @@ PanelKeyCatcher {
               spinning: view.scanSpinning
               actionEnabled: MonitorService.castRunning ? !MonitorService.castExpectedStop : !MonitorService.scanning
               hasCursor: view.hasCursor("scan")
+              cursorByKeys: cursor.byKeys
               onHoveredChanged: if (hovered)
                 view.hover("scan")
               onClicked: view.scanOrStop()
@@ -1099,6 +1107,7 @@ PanelKeyCatcher {
               width: parent.width
               height: FoamyStyle.rowHeight
               hasCursor: view.hasCursor("peer:" + index)
+              byKeys: cursor.byKeys
               onHovered: view.hover("peer:" + index)
               onClicked: view.connectPeer(modelData)
               Accessible.role: Accessible.Button
@@ -1284,6 +1293,7 @@ PanelKeyCatcher {
       showLabel: false
       value: field.currentValue
       hasCursor: view.hasCursor(field.stop)
+      cursorByKeys: cursor.byKeys
       onHovered: function (isHovered) {
         if (isHovered)
           view.hover(field.stop)
@@ -1383,6 +1393,9 @@ PanelKeyCatcher {
     property ArrangementDiagram canvas
     readonly property bool cursorHere: view.hasCursor("box:" + boxIndex)
     readonly property bool movingHere: view.moving === info.name
+    // The keys moved the cursor here: a 1 px accent border, where the
+    // pointer's cursor has the text colour. A drag or a move (2 px) wins.
+    readonly property bool keysHere: cursorHere && cursor.byKeys && !dragArea.dragging && !movingHere
 
     readonly property real baseX: (info.x - canvas.minX) * canvas.pxPerUnit
     readonly property real baseY: (info.y - canvas.minY) * canvas.pxPerUnit
@@ -1396,7 +1409,7 @@ PanelKeyCatcher {
     radius: FoamyStyle.radiusSmall
     color: info.focused ? Qt.tint(FoamyPalette.background, Qt.alpha(FoamyPalette.text, 0.18)) : cursorHere ? Qt.tint(FoamyPalette.background, FoamyPalette.hoverFill) : FoamyPalette.background
     border.width: dragArea.dragging || movingHere ? 2 : 1
-    border.color: dragArea.dragging || movingHere || cursorHere || info.focused ? FoamyPalette.text : FoamyPalette.divider
+    border.color: keysHere ? FoamyPalette.accent : dragArea.dragging || movingHere || cursorHere || info.focused ? FoamyPalette.text : FoamyPalette.divider
     z: dragArea.dragging || movingHere ? 10 : 1
     Accessible.role: Accessible.Button
     Accessible.name: info.label
@@ -1426,8 +1439,15 @@ PanelKeyCatcher {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.SizeAllCursor
-      onContainsMouseChanged: if (containsMouse)
-        view.hover("box:" + box.boxIndex)
+      onContainsMouseChanged: {
+        scenePoint = mapToItem(null, mouseX, mouseY)
+        if (containsMouse)
+          view.hover("box:" + box.boxIndex)
+      }
+      // While the keys drew the cursor, a real pointer move inside takes it
+      // back, as entering does. In scene coordinates: Qt re-sends hover when
+      // items move under a resting pointer, which is no move.
+      property point scenePoint
 
       property bool dragging: false
       property real startCanvasX: 0
@@ -1454,8 +1474,13 @@ PanelKeyCatcher {
         view.dragging = true
       }
       onPositionChanged: function (mouse) {
-        if (!dragging)
+        if (!dragging) {
+          const at = mapToItem(null, mouse.x, mouse.y)
+          if (containsMouse && cursor.byKeys && Math.abs(at.x - scenePoint.x) + Math.abs(at.y - scenePoint.y) > 0.01)
+            view.hover("box:" + box.boxIndex)
+          scenePoint = at
           return
+        }
         var unit = box.canvas.pxPerUnit
         var p = mapToItem(box.parent, mouse.x, mouse.y)
         var rawX = startLogicalX + (p.x - startCanvasX) / unit

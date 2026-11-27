@@ -333,9 +333,11 @@ ShellRoot {
     eq(view.brightnessAvailable, true, "brightness read for the open popup")
     eq(view.brightnessPercent, 50, "brightness value")
     eq(view.cursorKey, "", "no cursor highlight on open")
+    eq(keysLooks(view).length, 0, "nothing draws the keys' border on open")
     // The tab row is one stop: h/l move along it, Enter opens a tab.
     view.moveRequested(0, 1)
     eq(view.cursorKey, "tabs", "first move lands on the tab row")
+    eq(keysLooks(view.itemFor("tabs")).length, 1, "j: the tab with the cursor draws the keys' border")
     view.moveRequested(1, 0)
     eq(view.activeTab, "Display", "l moves along the tabs and opens none")
     view.activateRequested()
@@ -343,17 +345,25 @@ ShellRoot {
     eq(view.cursorKey, "tabs", "the cursor stays on the tab row")
     view.moveRequested(0, 1)
     eq(view.cursorKey, "textSize", "j walks into the tab")
+    check(keysLooks(view).length === 1 && keysLooks(view.itemFor("textSize")).length === 1, "j: the Text size dropdown draws the keys' border")
+    view.hover("textSize")
+    eq(keysLooks(view).length, 0, "the pointer on the Text size dropdown: no keys' border")
     view.moveRequested(0, -1)
     eq(view.cursorKey, "tabs", "k goes back to the tab row")
     check(view.stops.indexOf("save") > 0 && view.stops.indexOf("discard") > 0, "pending change adds Discard and Save")
+    // The pointer on the tab row, then w: the keys have the cursor again.
+    view.itemFor("tabs").hovered()
+    eq(keysLooks(view).length, 0, "the pointer on the tab row: no keys' border")
     shell.key(view, "w")
     eq(view.activeTab, "Wireless", "w opens Wireless")
+    eq(keysLooks(view.itemFor("tabs")).length, 1, "w: the tab row draws the keys' border")
     // The row's cursor follows: Enter on the row keeps Wireless open.
     view.activateRequested()
     eq(view.activeTab, "Wireless", "w puts the tab row's cursor on Wireless")
     eq(shell.service.wirelessWanted, true, "the Wireless tab wants a scan")
     view.setTab("Display")
     eq(shell.service.wirelessWanted, false, "leaving Wireless releases it")
+    keysBorder(view)
     view.place("identify")
     view.itemFor("tabs").hovered()
     eq(view.cursorKey, "tabs", "a hovered tab takes the panel's one cursor")
@@ -372,6 +382,13 @@ ShellRoot {
   property var keptPosition: null
   function stepFiveOffline() {
     var view = panel(0).popup.bodyItem
+    view.place("tabs")
+    for (var n = 0; n < view.stops.length && view.cursorKey !== "offline:0"; n++)
+      view.moveRequested(0, 1)
+    eq(view.cursorKey, "offline:0", "fixture: ↓ reaches the offline row")
+    check(keysLooks(view).length === 1 && keysLooks(view).indexOf(view.itemFor("offline:0")) === 0, "↓: the offline row draws the keys' border")
+    view.itemFor("offline:0").hovered()
+    eq(keysLooks(view).length, 0, "the pointer on the offline row: no keys' border")
     view.place("box:0")
     var label = view.friendlyDisplayName(view.offlineMonitors[0]) + " · " + view.tr("Off")
     check(shell.findText(view.itemFor("offline:0"), label) !== null, "itemFor finds the offline row its key names")
@@ -404,8 +421,14 @@ ShellRoot {
     eq(view.LayoutMirroring.enabled, shell.lang === "ar", "popup body mirrors in RTL only")
     // The plugin has no settings page: no Settings button.
     eq(view.band.settingsButton.visible, false, "no Settings button")
+    // Closed with the keys' cursor, reopened: no cursor and no border.
+    view.moveRequested(0, -1)
+    eq(keysLooks(view).length, 1, "fixture: k leaves the keys' border on a display box")
     view.closeRequested()
     eq(first.opened, false, "Esc closes")
+    first.open()
+    check(view.cursorKey === "" && keysLooks(view).length === 0, "reopened after the keys: no cursor, no keys' border (" + view.cursorKey + ")")
+    first.close()
     // A second bar's popup is open while three bars step brightness.
     panel(1).open()
     // Brightness from three bars at once: one DDC job at a time.
@@ -1052,6 +1075,62 @@ ShellRoot {
   // ---- Wireless receivers cached in the service (2-minute TTL) ----
   // The fake FluxCast lists $FOAMY_CALLS.peers after $FOAMY_CALLS.scandelay s.
   property int scansBefore: 0
+  // Every item under `item` that draws the keys' cursor: a surface's, an
+  // action's or a display box's 1 px accent border, a tab's, a dropdown
+  // trigger's (the pointer's cursor has none). The scene never shows the
+  // popup, so nothing here is `visible`: only the cursor's own item draws it.
+  function keysLooks(item, found) {
+    found = found || []
+    if (!item)
+      return found
+    if (item.borderSpec !== undefined && item.byKeys !== undefined) {
+      if (item.hasCursor && item.borderTop >= FoamyStyle.borderWidth && Qt.colorEqual(item.borderSpec.color, item.accent))
+        found.push(item)
+    } else if (item.borderSpec !== undefined && item.borderTop !== undefined) {
+      if (item.borderTop > 0 && Qt.colorEqual(item.borderSpec.color, FoamyPalette.accent))
+        found.push(item)
+    } else if (item.border !== undefined && item.border.width > 0 && Qt.colorEqual(item.border.color, FoamyPalette.accent))
+      found.push(item)
+    for (var i = 0; i < item.children.length; i++)
+      keysLooks(item.children[i], found)
+    return found
+  }
+  // l along the tab row after the pointer, ↓ to the selected display box,
+  // Identify and Brightness, l on Brightness after the pointer: each draws
+  // the keys' border; the pointer onto Identify clears it.
+  function keysBorder(view) {
+    view.itemFor("tabs").hovered()
+    view.moveRequested(1, 0)
+    var tabs = keysLooks(view.itemFor("tabs"))
+    check(tabs.length === 1 && keysLooks(view).length === 1, "l after the pointer: one tab draws the keys' border (" + tabs.length + ")")
+    view.moveRequested(-1, 0)
+    view.moveRequested(0, 1)
+    eq(view.cursorKey, "box:0", "fixture: ↓ from the tab row reaches the first display box")
+    var box = view.itemFor("box:0")
+    check(box !== null && box.info.focused, "fixture: the first box is the selected display")
+    check(keysLooks(view).length === 1 && keysLooks(view).indexOf(box) === 0, "↓: the selected display box draws the keys' border")
+    view.hover("box:0")
+    check(keysLooks(view).length === 0 && box.border.width === 1 && Qt.colorEqual(box.border.color, FoamyPalette.text), "the pointer on the box: its own look, no keys' border")
+    for (var n = 0; n < view.stops.length && view.cursorKey !== "identify"; n++)
+      view.moveRequested(0, 1)
+    eq(view.cursorKey, "identify", "fixture: ↓ reaches Identify")
+    var identify = view.itemFor("identify")
+    check(keysLooks(view).length === 1 && keysLooks(identify).length === 1, "↓: Identify draws the keys' border")
+    for (n = 0; n < view.stops.length && view.cursorKey !== "brightness"; n++)
+      view.moveRequested(0, 1)
+    eq(view.cursorKey, "brightness", "fixture: ↓ reaches Brightness")
+    check(keysLooks(view).length === 1 && keysLooks(view).indexOf(view.itemFor("brightness")) === 0, "↓: the brightness row draws the keys' border")
+    view.hover("brightness")
+    var level = view.brightnessPercent
+    view.moveRequested(1, 0)
+    check(view.brightnessPercent !== level && keysLooks(view).length === 1 && keysLooks(view).indexOf(view.itemFor("brightness")) === 0, "l on the brightness row after the pointer: it steps and draws the keys' border")
+    view.moveRequested(-1, 0)
+    // The pointer's way onto Identify (its hover handler), as the tab
+    // row's above: the popup is not on screen for real pointer events.
+    view.hover("identify")
+    eq(view.cursorKey, "identify", "the pointer moves the cursor to Identify")
+    eq(keysLooks(view).length, 0, "the pointer on Identify: no keys' border")
+  }
   // The first item under `item` (depth first) whose text is `text`.
   function findText(item, text) {
     if (!item)
@@ -1132,6 +1211,16 @@ ShellRoot {
     // A nearby device chooses its own name: markup in it is shown as text.
     var label = shell.findText(view.itemFor("peer:0"), "<b>Living</b> Room TV")
     check(label !== null && label.textFormat === Text.PlainText, "a receiver name is shown as plain text")
+    // ↓ to Scan and the first receiver: each draws the keys' border.
+    view.place("tabs")
+    for (var n = 0; n < view.stops.length && view.cursorKey !== "scan"; n++)
+      view.moveRequested(0, 1)
+    eq(view.cursorKey, "scan", "fixture: ↓ reaches Scan")
+    check(keysLooks(view).length === 1 && keysLooks(view).indexOf(view.itemFor("scan")) === 0, "↓: Scan draws the keys' border")
+    for (n = 0; n < view.stops.length && view.cursorKey !== "peer:0"; n++)
+      view.moveRequested(0, 1)
+    eq(view.cursorKey, "peer:0", "fixture: ↓ reaches the first receiver")
+    check(keysLooks(view).length === 1 && keysLooks(view).indexOf(view.itemFor("peer:0")) === 0, "↓: the first receiver draws the keys' border")
     panel(0).close()
     eq(shell.service.demanded, false, "popup closed")
     eq(shell.service.wirelessPeers.length, 2, "closing the popup keeps the receivers in the service")
