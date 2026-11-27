@@ -456,9 +456,10 @@ PanelKeyCatcher {
     if (cursorKey === "tabs") {
       tabBar.moveCursor(dx)
       cursor.byKeys = true
-    } else if (cursorKey === "brightness")
+    } else if (cursorKey === "brightness") {
       stepBrightness(dx)
-    else
+      cursor.byKeys = true
+    } else
       cursor.move(dx)
   }
   onActivateRequested: {
@@ -1292,6 +1293,7 @@ PanelKeyCatcher {
       showLabel: false
       value: field.currentValue
       hasCursor: view.hasCursor(field.stop)
+      cursorByKeys: cursor.byKeys
       onHovered: function (isHovered) {
         if (isHovered)
           view.hover(field.stop)
@@ -1391,6 +1393,9 @@ PanelKeyCatcher {
     property ArrangementDiagram canvas
     readonly property bool cursorHere: view.hasCursor("box:" + boxIndex)
     readonly property bool movingHere: view.moving === info.name
+    // The keys moved the cursor here: a 1 px accent border, where the
+    // pointer's cursor has the text colour. A drag or a move (2 px) wins.
+    readonly property bool keysHere: cursorHere && cursor.byKeys && !dragArea.dragging && !movingHere
 
     readonly property real baseX: (info.x - canvas.minX) * canvas.pxPerUnit
     readonly property real baseY: (info.y - canvas.minY) * canvas.pxPerUnit
@@ -1404,7 +1409,7 @@ PanelKeyCatcher {
     radius: FoamyStyle.radiusSmall
     color: info.focused ? Qt.tint(FoamyPalette.background, Qt.alpha(FoamyPalette.text, 0.18)) : cursorHere ? Qt.tint(FoamyPalette.background, FoamyPalette.hoverFill) : FoamyPalette.background
     border.width: dragArea.dragging || movingHere ? 2 : 1
-    border.color: dragArea.dragging || movingHere || cursorHere || info.focused ? FoamyPalette.text : FoamyPalette.divider
+    border.color: keysHere ? FoamyPalette.accent : dragArea.dragging || movingHere || cursorHere || info.focused ? FoamyPalette.text : FoamyPalette.divider
     z: dragArea.dragging || movingHere ? 10 : 1
     Accessible.role: Accessible.Button
     Accessible.name: info.label
@@ -1434,8 +1439,15 @@ PanelKeyCatcher {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.SizeAllCursor
-      onContainsMouseChanged: if (containsMouse)
-        view.hover("box:" + box.boxIndex)
+      onContainsMouseChanged: {
+        scenePoint = mapToItem(null, mouseX, mouseY)
+        if (containsMouse)
+          view.hover("box:" + box.boxIndex)
+      }
+      // While the keys drew the cursor, a real pointer move inside takes it
+      // back, as entering does. In scene coordinates: Qt re-sends hover when
+      // items move under a resting pointer, which is no move.
+      property point scenePoint
 
       property bool dragging: false
       property real startCanvasX: 0
@@ -1462,8 +1474,13 @@ PanelKeyCatcher {
         view.dragging = true
       }
       onPositionChanged: function (mouse) {
-        if (!dragging)
+        if (!dragging) {
+          const at = mapToItem(null, mouse.x, mouse.y)
+          if (containsMouse && cursor.byKeys && Math.abs(at.x - scenePoint.x) + Math.abs(at.y - scenePoint.y) > 0.01)
+            view.hover("box:" + box.boxIndex)
+          scenePoint = at
           return
+        }
         var unit = box.canvas.pxPerUnit
         var p = mapToItem(box.parent, mouse.x, mouse.y)
         var rawX = startLogicalX + (p.x - startCanvasX) / unit
