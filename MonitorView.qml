@@ -57,6 +57,7 @@ PanelKeyCatcher {
   readonly property bool brightnessAvailable: !!brightnessState && brightnessState.available
   readonly property int brightnessPercent: brightnessState ? brightnessState.percent : 0
   readonly property color changedColor: FoamyPalette.onSurface(FoamyPalette.warning)
+  readonly property color errorColor: FoamyPalette.onSurface(FoamyPalette.error)
   readonly property var gtkScale: MonitorService.gtkScale
 
   readonly property var tabs: ["Display", "Advanced", "Wireless"]
@@ -700,7 +701,7 @@ PanelKeyCatcher {
           width: content.inner
           visible: view.actionError !== ""
           text: view.errorText()
-          color: FoamyPalette.onSurface(FoamyPalette.error)
+          color: view.errorColor
           wrapMode: Text.WordWrap
           Accessible.role: Accessible.AlertMessage
         }
@@ -995,7 +996,7 @@ PanelKeyCatcher {
             Layout.fillWidth: true
             Layout.columnSpan: 2
             text: view.tr(view.gtkScale.error || "Text and cursor size apply immediately. GTK scale is included in Save; reopen apps after keeping it.")
-            color: view.gtkScale.error ? FoamyPalette.onSurface(FoamyPalette.error) : FoamyPalette.secondaryText
+            color: view.gtkScale.error ? view.errorColor : FoamyPalette.secondaryText
             small: true
             wrapMode: Text.WordWrap
           }
@@ -1035,7 +1036,7 @@ PanelKeyCatcher {
             bottomPadding: FoamyStyle.padding
             visible: text !== ""
             text: MonitorService.castRunning ? view.wirelessPhaseLabel() : MonitorService.wirelessError ? view.tr(MonitorService.wirelessError) : MonitorService.scanning || MonitorService.wirelessScanState === "idle" || MonitorService.wirelessPeers.length ? "" : view.tr("No receivers found")
-            color: MonitorService.wirelessError && !MonitorService.castRunning ? FoamyPalette.onSurface(FoamyPalette.error) : FoamyPalette.mutedText
+            color: MonitorService.wirelessError && !MonitorService.castRunning ? view.errorColor : FoamyPalette.mutedText
             small: true
           }
           // A scan with nothing to show yet: a searching row where the list
